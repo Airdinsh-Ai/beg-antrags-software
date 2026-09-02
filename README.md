@@ -16,7 +16,6 @@ Datenextraktion & Textgenerierung (OpenAI, Ziel Claude) · Langfuse-Observabilit
 gegen Primärquellen (KfW/BAFA-Merkblätter) geprüft; Umsetzung als Capstone-Projekt der
 Masterschool AI-Engineering-Ausbildung. Vollständige Dokumentation im Repository.
 
-Entstanden bei **Keystone Systems GmbH**.
 
 ---
 

@@ -1,0 +1,25 @@
+[project]
+name = "beg-antrags-software"
+version = "0.1.0"
+description = "BEG-Antrags-Software - Capstone MSIT"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "pydantic-settings",
+    "alembic",
+    "pyjwt",
+    "pwdlib[argon2]",
+    "email-validator",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "httpx",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

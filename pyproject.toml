@@ -9,6 +9,10 @@ dependencies = [
     "uvicorn[standard]",
     "sqlalchemy",
     "pydantic-settings",
+    "alembic",
+    "pyjwt",
+    "pwdlib[argon2]",
+    "email-validator",
 ]
 
 [dependency-groups]

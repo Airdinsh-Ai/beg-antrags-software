@@ -15,6 +15,7 @@ dependencies = [
     "email-validator",
     "openai>=3.16.2",
     "python-multipart>=0.0.32",
+    "langfuse>=4.15.4",
 ]
 
 [dependency-groups]

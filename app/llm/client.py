@@ -3,13 +3,19 @@ andere Datei importiert eine Anbieter-Bibliothek. Fachliche Signaturen statt
 durchgereichter chat.completions-Aufrufe; Pydantic-Modelle als Ergebnisvertrag.
 Anbieter ist Phase 0 fest auf OpenAI verdrahtet (Abschnitt 4.3) - kein
 Umschaltmechanismus, wird beim Anbieterwechsel ersetzt, nicht konfiguriert.
+
+OpenAI-Client kommt bewusst aus langfuse.openai statt aus openai direkt - ein
+Drop-in-Ersatz, der jeden Aufruf automatisch mit Trace, Kosten und Latenz an
+Langfuse meldet (Systemarchitektur Abschnitt 5), ohne dass die fachlichen
+Funktionen unten etwas davon wissen muessen.
 """
 
 import base64
 import time
 from typing import TypeVar
 
-from openai import APIError, OpenAI
+from langfuse.openai import OpenAI
+from openai import APIError
 from pydantic import BaseModel
 
 from app.core.config import settings

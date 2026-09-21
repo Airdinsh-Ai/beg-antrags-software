@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
@@ -91,3 +91,18 @@ def export_texts_endpoint(
 ) -> AntragsTextOut:
     eintrag = antrags_text_service.export_text_for_measure(db, case_id, measure_id, current_user)
     return AntragsTextOut.model_validate(eintrag)
+
+
+@router.get("/cases/{case_id}/texts/export/pdf")
+def export_texts_pdf_endpoint(
+    case_id: uuid.UUID,
+    measure_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.BERATER, UserRole.ADMIN)),
+) -> Response:
+    pdf_bytes = antrags_text_service.export_text_pdf_for_measure(db, case_id, measure_id, current_user)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="antragstext_{measure_id}.pdf"'},
+    )

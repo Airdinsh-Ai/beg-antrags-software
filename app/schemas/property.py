@@ -1,7 +1,10 @@
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
+
+from app.models.funding import ProgrammTyp
 
 
 class PersonIn(BaseModel):
@@ -39,6 +42,16 @@ class CaseCreateRequest(BaseModel):
     ownership_id: uuid.UUID
 
 
+class CaseFundingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    programm: ProgrammTyp
+    foerderbetrag: Decimal
+    regelversion: str
+    regel_hash: str
+    berechnet_am: datetime
+
+
 class CaseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -46,6 +59,5 @@ class CaseOut(BaseModel):
     building_id: uuid.UUID
     ownership_id: uuid.UUID
     status: str
-    regelversion: str | None
-    regel_hash: str | None
+    funding_entries: list[CaseFundingOut] = []
     created_at: datetime

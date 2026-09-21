@@ -8,7 +8,7 @@ relationship()-Strings zwischen den Dateien.
 from app.models.building import Building
 from app.models.case import Case, CaseStatus
 from app.models.document import Document, DocumentTyp, RetentionClass
-from app.models.funding import FundingHistory
+from app.models.funding import CaseFunding, FundingHistory, ProgrammTyp
 from app.models.measure import Measure, MeasureTyp
 from app.models.ownership import Ownership
 from app.models.person import Person
@@ -18,6 +18,7 @@ __all__ = [
     "AuditLog",
     "Building",
     "Case",
+    "CaseFunding",
     "CaseStatus",
     "Document",
     "DocumentTyp",
@@ -26,6 +27,7 @@ __all__ = [
     "MeasureTyp",
     "Ownership",
     "Person",
+    "ProgrammTyp",
     "RetentionClass",
     "User",
     "UserRole",

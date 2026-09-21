@@ -1,6 +1,12 @@
+import io
 import uuid
+from xml.sax.saxutils import escape
 
 from fastapi import HTTPException, status
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from sqlalchemy.orm import Session
 
 from app.core.db import utcnow
@@ -127,3 +133,39 @@ def export_text_for_measure(
             detail="Text ist noch nicht freigegeben - Pflicht-Review steht aus.",
         )
     return eintrag
+
+
+def export_text_pdf_for_measure(
+    db: Session, case_id: uuid.UUID, measure_id: uuid.UUID, current_user: User
+) -> bytes:
+    """PDF-Beleg fuer die eigene Akte (Gesamtkonzept Modul 4: "Ausgabe als
+    Copy-Paste-Text plus PDF-Beleg") - nur fuer bereits freigegebene Texte,
+    dieselbe 404/409-Pruefung wie beim JSON-Export."""
+    measure = _get_measure(db, case_id, measure_id, current_user)
+    eintrag = export_text_for_measure(db, case_id, measure_id, current_user)
+
+    styles = getSampleStyleSheet()
+    meta_style = ParagraphStyle("Meta", parent=styles["Normal"], fontSize=9, textColor="#555555")
+
+    reviewed_by = f" von {eintrag.reviewed_by.email}" if eintrag.reviewed_by else ""
+    reviewed_at = eintrag.reviewed_at.strftime("%d.%m.%Y %H:%M") if eintrag.reviewed_at else "-"
+
+    story = [
+        Paragraph("BEG-Antrag &ndash; Freitextfelder", styles["Heading1"]),
+        Paragraph(f"Gebäude: {escape(measure.case.building.adresse)}", meta_style),
+        Paragraph(f"Maßnahme: {escape(measure.typ.value)}", meta_style),
+        Paragraph(f"Freigegeben am {reviewed_at} Uhr{escape(reviewed_by)}", meta_style),
+        Spacer(1, 1 * cm),
+        Paragraph("Maßnahmenbeschreibung", styles["Heading2"]),
+        Paragraph(escape(eintrag.massnahmenbeschreibung_final or ""), styles["BodyText"]),
+        Spacer(1, 0.6 * cm),
+        Paragraph("Energetischer Mehrwert", styles["Heading2"]),
+        Paragraph(escape(eintrag.energetischer_mehrwert_final or ""), styles["BodyText"]),
+    ]
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm, leftMargin=2 * cm, rightMargin=2 * cm
+    )
+    doc.build(story)
+    return buffer.getvalue()

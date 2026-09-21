@@ -153,3 +153,37 @@ def test_generate_bei_llm_fehler_gibt_502(client, auth_headers, monkeypatch):
         f"/cases/{case_id}/texts/generate", json={"measure_id": measure_id}, headers=auth_headers
     )
     assert response.status_code == 502
+
+
+def test_export_pdf_gibt_gueltiges_pdf_zurueck(client, auth_headers, monkeypatch):
+    _mock_generate(monkeypatch)
+    case_id, measure_id = _create_case_with_measure(client, auth_headers)
+    client.post(f"/cases/{case_id}/texts/generate", json={"measure_id": measure_id}, headers=auth_headers)
+    client.post(
+        f"/cases/{case_id}/texts/review",
+        json={
+            "measure_id": measure_id,
+            "massnahmenbeschreibung": "Finale Beschreibung für den PDF-Beleg",
+            "energetischer_mehrwert": "Finaler Mehrwert für den PDF-Beleg",
+        },
+        headers=auth_headers,
+    )
+
+    response = client.get(
+        f"/cases/{case_id}/texts/export/pdf?measure_id={measure_id}", headers=auth_headers
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF-")
+    assert len(response.content) > 500
+
+
+def test_export_pdf_vor_freigabe_gibt_409(client, auth_headers, monkeypatch):
+    _mock_generate(monkeypatch)
+    case_id, measure_id = _create_case_with_measure(client, auth_headers)
+    client.post(f"/cases/{case_id}/texts/generate", json={"measure_id": measure_id}, headers=auth_headers)
+
+    response = client.get(
+        f"/cases/{case_id}/texts/export/pdf?measure_id={measure_id}", headers=auth_headers
+    )
+    assert response.status_code == 409

@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./app.db"
     secret_key: str = "dev-secret-key-change-me-before-any-real-deployment"
     access_token_expire_minutes: int = 60
+    openai_api_key: str = ""
+    upload_verzeichnis: str = "uploads"
 
 
 settings = Settings()

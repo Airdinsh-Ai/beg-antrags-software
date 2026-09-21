@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 
 class DocumentTyp(str, enum.Enum):
+    ENERGIEAUSWEIS = "energieausweis"
     ANGEBOT = "angebot"
     RECHNUNG = "rechnung"
     FOTO = "foto"
@@ -45,6 +46,8 @@ class Document(Base):
         Enum(RetentionClass, native_enum=False, validate_strings=True), nullable=False
     )
     dateiname: Mapped[str | None] = mapped_column(String(255))
+    # Ablageort auf dem lokalen Dateisystem (Phase 0 - kein Objektspeicher).
+    speicherpfad: Mapped[str] = mapped_column(String(500), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     case: Mapped["Case"] = relationship(back_populates="documents")

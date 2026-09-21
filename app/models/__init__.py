@@ -5,6 +5,7 @@ vollstaendig ist - fuer Alembic-Autogenerate und fuer die Aufloesung der
 relationship()-Strings zwischen den Dateien.
 """
 
+from app.models.antrags_text import AntragsText
 from app.models.building import Building
 from app.models.case import Case, CaseStatus
 from app.models.document import Document, DocumentTyp, RetentionClass
@@ -15,6 +16,7 @@ from app.models.person import Person
 from app.models.user import AuditLog, User, UserRole
 
 __all__ = [
+    "AntragsText",
     "AuditLog",
     "Building",
     "Case",

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base, utcnow
 
 if TYPE_CHECKING:
+    from app.models.antrags_text import AntragsText
     from app.models.case import Case
 
 
@@ -44,3 +45,4 @@ class Measure(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     case: Mapped["Case"] = relationship(back_populates="measures")
+    antrags_text: Mapped["AntragsText | None"] = relationship(back_populates="measure")

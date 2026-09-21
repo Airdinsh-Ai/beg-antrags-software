@@ -11,6 +11,7 @@ from app.core.db import Base, utcnow
 if TYPE_CHECKING:
     from app.models.building import Building
     from app.models.document import Document
+    from app.models.measure import Measure
     from app.models.ownership import Ownership
 
 
@@ -35,3 +36,4 @@ class Case(Base):
     building: Mapped["Building"] = relationship(back_populates="cases")
     ownership: Mapped["Ownership"] = relationship(back_populates="cases")
     documents: Mapped[list["Document"]] = relationship(back_populates="case")
+    measures: Mapped[list["Measure"]] = relationship(back_populates="case")

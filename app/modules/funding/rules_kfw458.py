@@ -3,9 +3,9 @@
 Quelle (Primaerquelle, per WebFetch geprueft am 18.09.2026):
 https://www.kfw.de/inlandsfoerderung/Bundesfoerderung-fuer-effiziente-Gebaeude/Anpassungen-2026/
 
-BEG-EM (BAFA-Anteil: Gebaeudehuelle, Anlagentechnik) ist noch NICHT in diesem Regelsatz
-enthalten - die amtlichen Prozentsaetze dafuer liegen bisher nur als nicht auslesbare
-PDFs vor (siehe Sitzungslog 2026-09-18). Folgt als eigener Regelsatz, sobald verifiziert.
+BEG EM (BAFA-Anteil: Gebaeudehuelle, Anlagentechnik) ist ein eigenes, strukturell
+anderes Programm - siehe rules_beg_em.py (Systemarchitektur Abschnitt 2.7: getrennte
+Berechnungsfunktionen statt gemeinsamer Abstraktion).
 
 Aenderungen an diesen Werten IMMER hier zentral vornehmen, nie in service.py - sonst
 verliert REGEL_HASH seinen Sinn (Nachvollziehbarkeit, Systemarchitektur Abschnitt 6).

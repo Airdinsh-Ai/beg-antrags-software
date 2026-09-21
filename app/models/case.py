@@ -11,6 +11,7 @@ from app.core.db import Base, utcnow
 if TYPE_CHECKING:
     from app.models.building import Building
     from app.models.document import Document
+    from app.models.funding import CaseFunding
     from app.models.measure import Measure
     from app.models.ownership import Ownership
 
@@ -29,11 +30,10 @@ class Case(Base):
     building_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("building.id"), nullable=False)
     ownership_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("ownership.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default=CaseStatus.ANGELEGT.value)
-    regelversion: Mapped[str | None] = mapped_column(String(30))
-    regel_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     building: Mapped["Building"] = relationship(back_populates="cases")
     ownership: Mapped["Ownership"] = relationship(back_populates="cases")
     documents: Mapped[list["Document"]] = relationship(back_populates="case")
     measures: Mapped[list["Measure"]] = relationship(back_populates="case")
+    funding_entries: Mapped[list["CaseFunding"]] = relationship(back_populates="case")

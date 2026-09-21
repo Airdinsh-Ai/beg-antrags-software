@@ -4,15 +4,35 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 
-class FundingCalculateRequest(BaseModel):
+class Kfw458CalculateRequest(BaseModel):
     foerderfaehige_kosten: Decimal = Field(gt=0)
     haushaltsjahreseinkommen: int = Field(ge=0)
     ist_selbstnutzer: bool = True
 
 
-class FundingCalculateResponse(BaseModel):
+class Kfw458CalculateResponse(BaseModel):
     foerderquote: Decimal
     foerderfaehige_kosten_gedeckelt: Decimal
+    foerderbetrag: Decimal
+    regelversion: str
+    regel_hash: str
+
+
+class BegEmCalculateRequest(BaseModel):
+    foerderfaehige_kosten: Decimal = Field(gt=0)
+    hat_isfp: bool = False
+    fachplanung_kosten: Decimal | None = Field(default=None, gt=0)
+    energieberatung_kosten: Decimal | None = Field(default=None, gt=0)
+    ist_mfh: bool = False
+
+
+class BegEmCalculateResponse(BaseModel):
+    foerderfaehige_kosten_gedeckelt: Decimal
+    grundfoerderung_betrag: Decimal
+    isfp_bonus_betrag: Decimal
+    hauptmassnahme_foerderbetrag: Decimal
+    fachplanung_foerderbetrag: Decimal | None
+    energieberatung_foerderbetrag: Decimal | None
     foerderbetrag: Decimal
     regelversion: str
     regel_hash: str

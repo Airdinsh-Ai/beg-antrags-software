@@ -43,17 +43,31 @@ AI-Engineering-Ausbildung.
      Start automatisch aus; Demo-Nutzer danach einmalig per
      `docker compose exec api uv run --no-sync python -m scripts.seed_demo_data`)
 
-## Manueller Test (Postman/curl)
+## Manueller Test (Postman/curl) — kompletter Ablauf
 
 ```
-POST /auth/login          {"email": "berater@example.com", "password": "demo-passwort-123"}
-POST /property             {"person": {...}, "building": {...}, "ownership": {...}}
-POST /cases                {"building_id": "...", "ownership_id": "..."}
+POST /auth/login                       {"email": "berater@example.com", "password": "demo-passwort-123"}
+POST /property                         {"person": {...}, "building": {...}, "ownership": {...}}
+POST /cases                            {"building_id": "...", "ownership_id": "..."}
+POST /cases/{id}/measures              {"typ": "waermepumpe_luft", "jaz": "3.5"}
+POST /cases/{id}/funding/kfw-458       {"foerderfaehige_kosten": "...", "haushaltsjahreseinkommen": ..., "ist_selbstnutzer": true, "measure_id": "..."}
+POST /cases/{id}/funding/beg-em        {"foerderfaehige_kosten": "...", "hat_isfp": false, "measure_id": "..."}
+POST /cases/{id}/documents             multipart: datei=<PDF>, typ=energieausweis, retention_class=...
+POST /cases/{id}/extract               (kein Body - liest das zuletzt hochgeladene Energieausweis-Dokument)
+POST /cases/{id}/texts/generate        {"measure_id": "..."}
+POST /cases/{id}/texts/review          {"measure_id": "...", "massnahmenbeschreibung": "...", "energetischer_mehrwert": "..."}
+GET  /cases/{id}/texts/export          ?measure_id=...
+GET  /cases/{id}/texts/export/pdf      ?measure_id=...
 GET  /cases/{id}
+GET  /funding/rulesets
+GET  /measures/catalog
 ```
 
 `Authorization: Bearer <access_token>` aus dem Login-Response bei allen Endpunkten außer
-`/health` und `/auth/login`.
+`/health` und `/auth/login`. `funding/kfw-458` und `funding/beg-em` sind reiner
+deterministischer Code, brauchen keinen LLM-Zugang. Nur `extract` und `texts/generate`
+rufen OpenAI auf — dafür `OPENAI_API_KEY`/`LANGFUSE_*` in `.env` nötig. Interaktive Doku
+unter `/docs` (Swagger UI), sobald der Server läuft.
 
 ## Tests
 

@@ -13,16 +13,23 @@ tatsächlich scheitern: die technisch-bürokratischen Beschreibungstexte.
 Datenextraktion & Textgenerierung (OpenAI, Ziel Claude) · Langfuse-Observability
 
 **Projektstand:** Phase 0: FastAPI-Backend mit Datenmodell (Systemarchitektur
-Abschnitt 7), Alembic-Migrationen, Auth + Rollen (Modul 10) und CRUD für Objekt/Fall
-(Modul 1). Noch ohne LLM-Anbindung, Fördersatz-Engine oder Antragstext-Generator.
-Umsetzung als Capstone-Projekt der Masterschool AI-Engineering-Ausbildung.
+Abschnitt 7), Alembic-Migrationen, Auth + Rollen (Modul 10), CRUD für Objekt/Fall
+(Modul 1), Maßnahmenplanung (Modul 2), Fördersatz-Engine für KfW 458 + BEG EM
+inkl. 60%-Kumulierungsprüfung (Modul 3), LLM-Extraktion aus Energieausweisen
+(Modul 1) und Antragstext-Generator mit Pflicht-Review (Modul 4). Beide
+LLM-Aufrufe über OpenAI, instrumentiert mit Langfuse (Systemarchitektur
+Abschnitt 4/5). Umsetzung als Capstone-Projekt der Masterschool
+AI-Engineering-Ausbildung.
 
 **Eigenständiges Projekt** — eigene `.venv`, eigenes `uv.lock`.
 
 ## Setup
 
-1. `.env.example` nach `.env` kopieren
-2. In diesem Ordner: `uv sync` (erstellt `.venv` lokal)
+1. `.env.example` nach `.env` kopieren, `OPENAI_API_KEY` sowie
+   `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`/`LANGFUSE_HOST` eintragen (für
+   die LLM-Endpunkte aus Modul 1/4 nötig; ohne gültigen OpenAI-Key
+   funktionieren nur die übrigen Endpunkte)
+2. In diesem Ordner: `uv sync` (erstellt `.venv` lokal, unabhängig von der Root-venv)
 3. Datenbank-Schema anlegen: `uv run alembic upgrade head`
 4. Demo-Nutzer für den manuellen Test anlegen (Phase 0 hat keinen
    Registrierungs-Endpunkt, siehe Systemarchitektur Abschnitt 11):

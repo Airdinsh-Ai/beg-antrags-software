@@ -9,6 +9,7 @@ from app.models.building import Building
 from app.models.case import Case, CaseStatus
 from app.models.document import Document, DocumentTyp, RetentionClass
 from app.models.funding import FundingHistory
+from app.models.measure import Measure, MeasureTyp
 from app.models.ownership import Ownership
 from app.models.person import Person
 from app.models.user import AuditLog, User, UserRole
@@ -21,6 +22,8 @@ __all__ = [
     "Document",
     "DocumentTyp",
     "FundingHistory",
+    "Measure",
+    "MeasureTyp",
     "Ownership",
     "Person",
     "RetentionClass",

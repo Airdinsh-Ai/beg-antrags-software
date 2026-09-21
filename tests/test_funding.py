@@ -293,3 +293,105 @@ def test_funding_history_wird_aus_aktueller_summe_neu_berechnet(client, auth_hea
     )
     db_session.refresh(history)
     assert history.betrag == Decimal("16000.00")
+
+
+def _create_case_with_measure(client, auth_headers) -> tuple[dict, str]:
+    case = _create_case(client, auth_headers)
+    measure = client.post(
+        f"/cases/{case['id']}/measures",
+        json={"typ": "daemmung"},
+        headers=auth_headers,
+    ).json()
+    return case, measure["id"]
+
+
+def test_kumulierung_greift_nicht_bei_einzelprogramm(client, auth_headers):
+    case, measure_id = _create_case_with_measure(client, auth_headers)
+
+    # KfW 458 allein erreicht 80 % - deutlich ueber 60 %, aber ohne zweites
+    # Programm auf derselben Massnahme ist das kein Kumulierungsfall.
+    response = client.post(
+        f"/cases/{case['id']}/funding/kfw-458",
+        json={
+            "foerderfaehige_kosten": "10000",
+            "haushaltsjahreseinkommen": 25000,
+            "ist_selbstnutzer": True,
+            "measure_id": measure_id,
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["foerderbetrag"] == "8000.00"
+
+
+def test_kumulierung_zwei_programme_unter_60_prozent_ok(client, auth_headers):
+    case, measure_id = _create_case_with_measure(client, auth_headers)
+
+    beg_em_response = client.post(
+        f"/cases/{case['id']}/funding/beg-em",
+        json={"foerderfaehige_kosten": "100000", "hat_isfp": False, "measure_id": measure_id},
+        headers=auth_headers,
+    )
+    assert beg_em_response.status_code == 200
+    assert beg_em_response.json()["foerderbetrag"] == "4500.00"  # 30000 (Deckel) * 15 %
+
+    kfw_response = client.post(
+        f"/cases/{case['id']}/funding/kfw-458",
+        json={
+            "foerderfaehige_kosten": "100000",
+            "haushaltsjahreseinkommen": 100000,
+            "ist_selbstnutzer": True,
+            "measure_id": measure_id,
+        },
+        headers=auth_headers,
+    )
+    assert kfw_response.status_code == 200
+    assert kfw_response.json()["foerderbetrag"] == "12880.00"  # 28000 (Deckel) * 46 %
+    # Summe 17380 <= 60 % von 100000 (60000) -> ok
+
+
+def test_kumulierung_zwei_programme_ueber_60_prozent_wird_abgelehnt(client, auth_headers):
+    case, measure_id = _create_case_with_measure(client, auth_headers)
+
+    beg_em_response = client.post(
+        f"/cases/{case['id']}/funding/beg-em",
+        json={"foerderfaehige_kosten": "10000", "hat_isfp": False, "measure_id": measure_id},
+        headers=auth_headers,
+    )
+    assert beg_em_response.status_code == 200
+    assert beg_em_response.json()["foerderbetrag"] == "1500.00"
+
+    kfw_response = client.post(
+        f"/cases/{case['id']}/funding/kfw-458",
+        json={
+            "foerderfaehige_kosten": "10000",
+            "haushaltsjahreseinkommen": 25000,
+            "ist_selbstnutzer": True,
+            "measure_id": measure_id,
+        },
+        headers=auth_headers,
+    )
+    # 1500 + 8000 = 9500 > 60 % von 10000 (6000)
+    assert kfw_response.status_code == 409
+
+
+def test_kumulierung_ohne_measure_id_bleibt_unberuehrt(client, auth_headers):
+    case = _create_case(client, auth_headers)
+
+    beg_em_response = client.post(
+        f"/cases/{case['id']}/funding/beg-em",
+        json={"foerderfaehige_kosten": "10000", "hat_isfp": False},
+        headers=auth_headers,
+    )
+    kfw_response = client.post(
+        f"/cases/{case['id']}/funding/kfw-458",
+        json={
+            "foerderfaehige_kosten": "10000",
+            "haushaltsjahreseinkommen": 25000,
+            "ist_selbstnutzer": True,
+        },
+        headers=auth_headers,
+    )
+    # Ohne measure_id keine Kumulierungspruefung, obwohl die Summe > 60 % waere.
+    assert beg_em_response.status_code == 200
+    assert kfw_response.status_code == 200

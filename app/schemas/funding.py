@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -8,6 +9,9 @@ class Kfw458CalculateRequest(BaseModel):
     foerderfaehige_kosten: Decimal = Field(gt=0)
     haushaltsjahreseinkommen: int = Field(ge=0)
     ist_selbstnutzer: bool = True
+    # Optional: verknuepft die Berechnung mit einer konkreten Massnahme -
+    # Voraussetzung fuer die 60%-Kumulierungspruefung (siehe check_kumulierung()).
+    measure_id: uuid.UUID | None = None
 
 
 class Kfw458CalculateResponse(BaseModel):
@@ -24,6 +28,7 @@ class BegEmCalculateRequest(BaseModel):
     fachplanung_kosten: Decimal | None = Field(default=None, gt=0)
     energieberatung_kosten: Decimal | None = Field(default=None, gt=0)
     ist_mfh: bool = False
+    measure_id: uuid.UUID | None = None
 
 
 class BegEmCalculateResponse(BaseModel):

@@ -32,6 +32,7 @@ def calculate_kfw458_endpoint(
         foerderfaehige_kosten=payload.foerderfaehige_kosten,
         haushaltsjahreseinkommen=payload.haushaltsjahreseinkommen,
         ist_selbstnutzer=payload.ist_selbstnutzer,
+        measure_id=payload.measure_id,
     )
     return Kfw458CalculateResponse(**result)
 
@@ -52,6 +53,7 @@ def calculate_beg_em_endpoint(
         fachplanung_kosten=payload.fachplanung_kosten,
         energieberatung_kosten=payload.energieberatung_kosten,
         ist_mfh=payload.ist_mfh,
+        measure_id=payload.measure_id,
     )
     return BegEmCalculateResponse(**result)
 

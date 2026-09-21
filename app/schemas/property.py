@@ -46,6 +46,8 @@ class CaseFundingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     programm: ProgrammTyp
+    measure_id: uuid.UUID | None
+    foerderfaehige_kosten: Decimal | None
     foerderbetrag: Decimal
     regelversion: str
     regel_hash: str

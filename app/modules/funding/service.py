@@ -1,6 +1,7 @@
 import uuid
 from decimal import Decimal
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.db import utcnow
@@ -9,6 +10,13 @@ from app.models.funding import CaseFunding, FundingHistory, ProgrammTyp
 from app.models.user import User
 from app.modules.funding import rules_beg_em, rules_kfw458
 from app.modules.property.service import get_case
+
+# Gesamtkonzept Modul 3: Obergrenze der Gesamtfoerderquote aus allen
+# oeffentlichen Quellen fuer dieselben Kosten. Greift nur zwischen mehreren
+# PROGRAMMEN auf derselben Massnahme - ein einzelnes Programm darf seinen
+# eigenen, hoeheren offiziellen Satz (z.B. KfW 458 bis 80 %) ausschoepfen,
+# das ist kein Kumulierungsfall.
+KUMULIERUNG_OBERGRENZE = Decimal("0.60")
 
 
 def _einkommensbonus(haushaltsjahreseinkommen: int) -> Decimal:
@@ -126,6 +134,53 @@ def calculate_beg_em(
     }
 
 
+def check_kumulierung(
+    db: Session,
+    measure_id: uuid.UUID | None,
+    programm: ProgrammTyp,
+    foerderfaehige_kosten: Decimal,
+    neuer_foerderbetrag: Decimal,
+) -> None:
+    """60%-Kumulierungsobergrenze (Gesamtkonzept Modul 3): Summe aus MEHREREN
+    Programmen fuer dieselbe Massnahme darf 60 % ihrer foerderfaehigen Kosten
+    nicht uebersteigen. Ein einzelnes Programm ohne zweites auf derselben
+    Massnahme ist davon ausgenommen - es darf seinen eigenen, ggf. hoeheren
+    offiziellen Satz ausschoepfen (z.B. KfW 458 bis 80 %); das ist keine
+    Kumulierung, sondern die normale Foerderquote dieses einen Programms.
+
+    Ohne measure_id keine Pruefung - das deckt den ausdruecklich erlaubten
+    Fall ab, dass unterschiedliche Gewerke (z.B. Daemmung ueber BAFA, Heizung
+    ueber KfW 458) getrennt gefoerdert werden, ohne dass hier ein Bezug
+    zwischen ihnen besteht.
+    """
+    if measure_id is None:
+        return
+
+    andere_eintraege = (
+        db.query(CaseFunding)
+        .filter(CaseFunding.measure_id == measure_id, CaseFunding.programm != programm)
+        .all()
+    )
+    if not andere_eintraege:
+        # Kein zweites Programm auf dieser Massnahme - keine Kumulierung im Spiel.
+        return
+
+    bisherige_summe = sum((eintrag.foerderbetrag for eintrag in andere_eintraege), Decimal("0"))
+    gesamt = bisherige_summe + neuer_foerderbetrag
+    obergrenze = (foerderfaehige_kosten * KUMULIERUNG_OBERGRENZE).quantize(Decimal("0.01"))
+
+    if gesamt > obergrenze:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Kumulierungsobergrenze ueberschritten: {gesamt} Euro Gesamtfoerderung "
+                f"aus mehreren Programmen fuer diese Massnahme uebersteigen 60 % von "
+                f"{foerderfaehige_kosten} Euro foerderfaehigen Kosten ({obergrenze} Euro) "
+                "(Gesamtkonzept Modul 3)."
+            ),
+        )
+
+
 def _upsert_case_funding(
     db: Session,
     case: Case,
@@ -133,6 +188,8 @@ def _upsert_case_funding(
     foerderbetrag: Decimal,
     regelversion: str,
     regel_hash: str,
+    measure_id: uuid.UUID | None = None,
+    foerderfaehige_kosten: Decimal | None = None,
 ) -> CaseFunding:
     """Upsert je (case_id, programm) - eine Neuberechnung ersetzt die bestehende
     Zeile, statt eine zweite anzuhaengen (Systemarchitektur Abschnitt 7.5).
@@ -156,6 +213,8 @@ def _upsert_case_funding(
     entry.regelversion = regelversion
     entry.regel_hash = regel_hash
     entry.berechnet_am = now
+    entry.measure_id = measure_id
+    entry.foerderfaehige_kosten = foerderfaehige_kosten
     db.flush()
 
     jahr = now.year
@@ -196,11 +255,20 @@ def calculate_case_kfw458(
     foerderfaehige_kosten: Decimal,
     haushaltsjahreseinkommen: int,
     ist_selbstnutzer: bool,
+    measure_id: uuid.UUID | None = None,
 ) -> dict:
     case = get_case(db, case_id, current_user)
     result = calculate_kfw458(foerderfaehige_kosten, haushaltsjahreseinkommen, ist_selbstnutzer)
+    check_kumulierung(db, measure_id, ProgrammTyp.KFW_458, foerderfaehige_kosten, result["foerderbetrag"])
     _upsert_case_funding(
-        db, case, ProgrammTyp.KFW_458, result["foerderbetrag"], result["regelversion"], result["regel_hash"]
+        db,
+        case,
+        ProgrammTyp.KFW_458,
+        result["foerderbetrag"],
+        result["regelversion"],
+        result["regel_hash"],
+        measure_id=measure_id,
+        foerderfaehige_kosten=foerderfaehige_kosten,
     )
     return result
 
@@ -214,12 +282,21 @@ def calculate_case_beg_em(
     fachplanung_kosten: Decimal | None,
     energieberatung_kosten: Decimal | None,
     ist_mfh: bool,
+    measure_id: uuid.UUID | None = None,
 ) -> dict:
     case = get_case(db, case_id, current_user)
     result = calculate_beg_em(
         foerderfaehige_kosten, hat_isfp, fachplanung_kosten, energieberatung_kosten, ist_mfh
     )
+    check_kumulierung(db, measure_id, ProgrammTyp.BEG_EM, foerderfaehige_kosten, result["foerderbetrag"])
     _upsert_case_funding(
-        db, case, ProgrammTyp.BEG_EM, result["foerderbetrag"], result["regelversion"], result["regel_hash"]
+        db,
+        case,
+        ProgrammTyp.BEG_EM,
+        result["foerderbetrag"],
+        result["regelversion"],
+        result["regel_hash"],
+        measure_id=measure_id,
+        foerderfaehige_kosten=foerderfaehige_kosten,
     )
     return result

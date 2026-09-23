@@ -1,0 +1,49 @@
+# Minimale CI: pytest + Migrations-Rauchtest bei jedem PR auf main und jedem Push auf main.
+# Braucht KEINE Secrets: Die LLM-Aufrufe sind in allen Tests gemockt, und ohne .env
+# greifen die Standardwerte aus app/core/config.py (belegt am 23.09.2026: frischer
+# Klon ohne .env -> 117/117 gruen).
+name: tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.14"
+
+      - name: Abhaengigkeiten (inkl. dev-Gruppe, exakt nach uv.lock)
+        run: uv sync --frozen
+
+      - name: pytest
+        run: uv run pytest -q
+
+      - name: Migrations-Rauchtest (frische SQLite-DB)
+        env:
+          # app/core/config.py liest DATABASE_URL, alembic/env.py uebernimmt sie.
+          DATABASE_URL: sqlite:///./ci.db
+        run: |
+          uv run alembic upgrade head
+          uv run alembic current
+          uv run alembic check
+          echo "--- Nachweis: ci.db angelegt"
+          ls -l ci.db
+          uv run python -c "import sqlite3; t=[r[0] for r in sqlite3.connect('ci.db').execute(\"select name from sqlite_master where type='table' order by name\")]; print(len(t), 'Tabellen:', ', '.join(t))"

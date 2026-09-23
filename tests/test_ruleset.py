@@ -74,7 +74,7 @@ def test_auswahl_nach_stichtag_nicht_nach_neuester_datei(regelwechsel_dir):
     erster_neuer_tag = ruleset.waehle_regelsatz(ProgrammTyp.KFW_458, date(2026, 7, 21), regelwerk)
 
     assert letzter_alter_tag.kopf.version == "kfw458-test-alt"
-    assert erster_neuer_tag.kopf.version == "kfw458-2026-07-21"
+    assert erster_neuer_tag.kopf.version == "kfw458-2026-07-21.2"
 
 
 def test_stichtag_vor_erstem_regelsatz_wirft_fehler(regelwechsel_dir):

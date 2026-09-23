@@ -63,11 +63,10 @@ class CaseFunding(Base):
     kann mehrere Foerderprogramme gleichzeitig haben (z.B. Daemmung ueber BAFA,
     Heizung ueber KfW 458). Upsert je (case_id, programm), kein Anhaengen.
 
-    measure_id + foerderfaehige_kosten sind optional: nur gesetzt, wenn die
-    Berechnung einer konkreten Massnahme zugeordnet wird. Das ist die
-    Voraussetzung fuer die 60%-Kumulierungspruefung (Gesamtkonzept Modul 3) -
-    ohne diesen Bezug kann nicht unterschieden werden, ob zwei Programme
-    dieselben Kosten doppelt foerdern oder (erlaubt) getrennte Gewerke."""
+    measure_id ist seit 23.09.2026 bei jeder neuen Berechnung gesetzt (Pflicht im
+    Request) - Voraussetzung fuer die Typpruefung und fuer "ein Programm pro
+    Massnahme" (KfW-Merkblatt 458, 07/2026, S. 9). Die Spalte bleibt nullable,
+    weil Altzeilen aus der Zeit davor keine Massnahme tragen."""
 
     __tablename__ = "case_funding"
     __table_args__ = (UniqueConstraint("case_id", "programm"),)

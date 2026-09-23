@@ -21,15 +21,15 @@ flowchart TD
 
     subgraph M2["Modul 2 – Maßnahmenplanung"]
         catalog["GET /measures/catalog<br/>Maßnahmenkatalog"]
-        measure["POST /cases/{id}/measures<br/>Maßnahme anlegen → measure_id"]
+        measure["POST /cases/{id}/measures<br/>Maßnahme anlegen → measure_id<br/>(Wärmeerzeuger: + Altheizung)"]
         catalog --> measure
     end
 
     subgraph M3["Modul 3 – Fördersatz-Engine (kein LLM)"]
         kfw["POST /cases/{id}/funding/kfw-458<br/>Heizungsförderung"]
         begem["POST /cases/{id}/funding/beg-em<br/>Einzelmaßnahmen"]
-        kumul{"Kumulierung<br/>≤ 60 % der förderfähigen Kosten?"}
-        kumulFail["409 – Obergrenze überschritten"]
+        kumul{"Typ passt zum Programm?<br/>Nur ein Programm pro Maßnahme?"}
+        kumulFail["422 / 409 – abgelehnt"]
         kfw --> kumul
         begem --> kumul
         kumul -- nein --> kumulFail
@@ -65,7 +65,7 @@ flowchart TD
 
 ## Die zwei Kernideen
 
-- **Geld rechnet nie das LLM.** Fördersätze, Deckel und die 60-%-Kumulierung
+- **Geld rechnet nie das LLM.** Fördersätze, Boni, Deckel und die Programmzuordnung
   laufen komplett in `app/modules/funding/` (deterministisch, testbar).
 - **Kein LLM-Text ohne Mensch.** Jeder Entwurf startet mit `freigegeben = false`;
   Export gibt `409`, bis jemand ihn über `/texts/review` aktiv freigibt

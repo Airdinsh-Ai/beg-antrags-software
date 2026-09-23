@@ -1,10 +1,10 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, Uuid
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Numeric, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base, utcnow
@@ -29,6 +29,20 @@ class MeasureTyp(str, enum.Enum):
     BAUBEGLEITUNG = "baubegleitung"
 
 
+class AltheizungArt(str, enum.Enum):
+    """Art der Heizung, die ein Waermeerzeuger ersetzt - entscheidet ueber den
+    Klimageschwindigkeitsbonus (KfW 458, Merkblatt 07/2026). Welche Arten
+    bonusberechtigt sind, steht im Regelsatz, nicht hier."""
+
+    OEL = "oel"
+    KOHLE = "kohle"
+    GAS_ETAGE = "gas_etage"
+    NACHTSPEICHER = "nachtspeicher"
+    GAS = "gas"
+    BIOMASSE = "biomasse"
+    SONSTIGE = "sonstige"
+
+
 class Measure(Base):
     __tablename__ = "measure"
 
@@ -42,6 +56,14 @@ class Measure(Base):
     # None = in Phase 0 fuer diesen Typ noch nicht automatisiert geprueft.
     machbar: Mapped[bool | None] = mapped_column(Boolean)
     hinweis: Mapped[str | None] = mapped_column(String(500))
+    # Die Heizung, die diese Massnahme ersetzt - nur bei Waermeerzeugern. Gehoert
+    # zur Massnahme, nicht zum Gebaeude: nach dem Tausch stimmt sie dort nicht mehr.
+    # Pflicht erst bei der KfW-458-Berechnung fuer Selbstnutzer (Klimabonus).
+    alte_heizung_art: Mapped[AltheizungArt | None] = mapped_column(
+        Enum(AltheizungArt, native_enum=False, validate_strings=True)
+    )
+    alte_heizung_inbetriebnahme: Mapped[date | None] = mapped_column(Date)
+    alte_heizung_funktionstuechtig: Mapped[bool | None] = mapped_column(Boolean)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
     case: Mapped["Case"] = relationship(back_populates="measures")

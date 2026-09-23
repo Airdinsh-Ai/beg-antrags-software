@@ -10,6 +10,7 @@ Sollwerte aus dem Merkblatt, nicht aus dem Code abgeleitet:
 - fuer dieselben Kosten nur ein Antrag, KfW ODER BAFA (S. 9)
 """
 
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -151,7 +152,7 @@ def test_t7b_schutz_ein_programm_pro_massnahme_gibt_409(client, auth_headers, db
     ))
 
     with pytest.raises(HTTPException) as exc:
-        check_ein_programm_pro_massnahme(db_session, measure_id, ProgrammTyp.BEG_EM)
+        check_ein_programm_pro_massnahme(db_session, uuid.UUID(measure_id), ProgrammTyp.BEG_EM)
     assert exc.value.status_code == 409
 
 
@@ -363,3 +364,24 @@ def test_zweite_massnahme_im_fall_mit_eigener_altheizung(client, auth_headers):
         foerderfaehige_kosten="28000", haushaltsjahreseinkommen=80000, ist_selbstnutzer=True,
     ))
     assert body["klimabonus_angewendet"] is False
+
+
+def test_t14d_stichtag_29_februar_zieljahr_ohne_schaltjahr():
+    # Stichtag 29.02.2024, 21 Jahre zurueck: 2003 hat keinen 29.02. -> Grenze 28.02.2003.
+    # Eine am 28.02.2003 begonnene 21-Jahres-Frist ist am 28.02.2024 vollendet (ja),
+    # eine am 01.03.2003 begonnene erst am 01.03.2024 (nein).
+    regeln = ruleset.waehle_regelsatz(ProgrammTyp.KFW_458, date(2026, 9, 1)).regeln
+    regeln = regeln.model_copy(update={"klimabonus_mindestalter_jahre": 21})
+    stichtag = date(2024, 2, 29)
+    assert _klimabonus_berechtigt(regeln, AltheizungArt.GAS, date(2003, 2, 28), True, stichtag) is True
+    assert _klimabonus_berechtigt(regeln, AltheizungArt.GAS, date(2003, 3, 1), True, stichtag) is False
+
+
+def test_massnahme_aus_anderem_fall_gibt_404(client, auth_headers):
+    _, fremde_measure_id = _create_case_with_measure(client, auth_headers)
+    case = _create_case(client, auth_headers)
+    response = _kfw(
+        client, auth_headers, case["id"], fremde_measure_id,
+        foerderfaehige_kosten="10000", ist_selbstnutzer=False,
+    )
+    assert response.status_code == 404

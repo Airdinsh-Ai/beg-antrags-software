@@ -1,12 +1,18 @@
 # BEG-EM-Regelsatz (BAFA-Anteil: Gebaeudehuelle, Anlagentechnik), Stand ab 21.07.2026.
 # Recherchestand 21.09.2026, siehe Sitzungslog 2026-09-21-modul-2-und-beg-em-recherche.md.
 #
+# ERGAENZUNG 23.09.2026 (Version beg-em-2026-07-21 -> beg-em-2026-07-21.2): nur
+# zulaessige_massnahmen hinzugefuegt, kein Satz geaendert - Berechnungsergebnisse
+# sind identisch. Versionsstring trotzdem angehoben, weil sich der regel_hash
+# aendert; alter Stand ueber Git-Commit 705b9bf abrufbar. Begruendung fuer das
+# In-place-Aendern wie bei kfw_458_2026-07-21.yaml.
+#
 # Nur die erste Wohneinheit abgebildet - gestaffelte Deckel fuer weitere
 # Wohneinheiten (2.-6. WE: 15.000 Euro, ab 7. WE: 8.000 Euro) sind Phase 2.
 
 regelwerk:
   programm: beg_em
-  version: "beg-em-2026-07-21"
+  version: "beg-em-2026-07-21.2"
   gueltig_ab: 2026-07-21
   gueltig_bis: null
   quelle: "bafa.de, Richtlinie BEG EM vom 17.08.2026"
@@ -26,3 +32,9 @@ regeln:
   energieberatung_satz: "0.50"
   energieberatung_deckel_efh_zfh: "650"
   energieberatung_deckel_mfh: "1300"
+  # Hauptmassnahmen, fuer die BEG EM (BAFA) berechnet werden darf. Waermeerzeuger
+  # laufen ueber KfW 458 - fuer dieselben Kosten nur ein Antrag, KfW ODER BAFA
+  # (KfW-Merkblatt 458, 07/2026, S. 9). pv_speicher und baubegleitung stehen
+  # bewusst in keiner Liste (Baubegleitung ist die Nebenrechnung fachplanung_*):
+  # aus der Foerderlandschaft abgeleitet, NICHT gegen die Richtlinie geprueft.
+  zulaessige_massnahmen: [daemmung, fenster, lueftung]

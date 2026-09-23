@@ -10,12 +10,13 @@ from app.models.building import Building
 from app.models.case import Case, CaseStatus
 from app.models.document import Document, DocumentTyp, RetentionClass
 from app.models.funding import CaseFunding, FundingHistory, ProgrammTyp
-from app.models.measure import Measure, MeasureTyp
+from app.models.measure import AltheizungArt, Measure, MeasureTyp
 from app.models.ownership import Ownership
 from app.models.person import Person
 from app.models.user import AuditLog, User, UserRole
 
 __all__ = [
+    "AltheizungArt",
     "AntragsText",
     "AuditLog",
     "Building",

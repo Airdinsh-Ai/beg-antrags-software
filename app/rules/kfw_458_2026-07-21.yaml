@@ -1,29 +1,62 @@
 # KfW-458-Regelsatz (Heizungsfoerderung), Stand ab 21.07.2026.
-# Quelle per WebFetch geprueft am 18.09.2026.
+# Quelle: KfW-Merkblatt Zuschuss 458, Stand 07/2026, Bestellnr. 600 000 5131,
+# gegengeprueft am 23.09.2026 (Seitenangaben unten beziehen sich darauf).
 #
 # Werte als Strings, damit sie verlustfrei als Decimal geladen werden (kein Float).
 # Regelsaetze nie ueberschreiben, nur abloesen: beim Nachfolger hier gueltig_bis
 # setzen (letzter gueltiger Tag) und eine neue Datei anlegen (Systemarchitektur 6).
+#
+# FEHLERKORREKTUR 23.09.2026 (Version kfw458-2026-07-21 -> kfw458-2026-07-21.2):
+# Ausnahmsweise IN PLACE korrigiert statt abgeloest. Regel 2 schuetzt Aenderungen
+# des RECHTSSTANDS; hier hat sich nicht das Recht geaendert, sondern die Datei hat
+# das Merkblatt vom selben Tag falsch abgebildet (80-%-Grenze 40.000 statt 30.000,
+# Bonusbedingungen fehlten, keine Degression, keine Mindestinvestition). Ein
+# Nachfolger mit demselben gueltig_ab wuerde die Ueberlappungspruefung verletzen
+# und haette dem falschen Stand einen eigenen Gueltigkeitszeitraum gegeben.
+# Nachweisbarkeit des alten Stands: der Inhalt bleibt ueber Git-Commit 705b9bf
+# abrufbar (git show 705b9bf:<Pfad dieser Datei>); bestehende case_funding-Zeilen
+# tragen regelversion "kfw458-2026-07-21" und den alten regel_hash - dieser laesst
+# sich gegen den SHA-256 jener Datei (Zeilenenden auf LF normalisiert) pruefen.
+# Vertretbar, weil Phase 0 nur synthetische Daten kennt (Sitzungslog 2026-09-23).
 
 regelwerk:
   programm: kfw_458
-  version: "kfw458-2026-07-21"
+  version: "kfw458-2026-07-21.2"
   gueltig_ab: 2026-07-21
-  gueltig_bis: null
-  quelle: "https://www.kfw.de/inlandsfoerderung/Bundesfoerderung-fuer-effiziente-Gebaeude/Anpassungen-2026/"
-  geprueft_am: 2026-09-18
+  # Degression ab 01.02.2027 (S. 3/4): Klimabonus -4 Prozentpunkte, Deckel erste
+  # Wohneinheit -750 Euro, halbjaehrlich. Nachfolger-Regelsatz noch nicht angelegt -
+  # bis dahin liefert die Engine ab 01.02.2027 bewusst "kein gueltiger Regelsatz".
+  gueltig_bis: 2027-01-31
+  quelle: "https://www.kfw.de/PDF/Download-Center/F%C3%B6rderprogramme-(Inlandsf%C3%B6rderung)/PDF-Dokumente/6000005131_M_458.pdf"
+  geprueft_am: 2026-09-23
 
 regeln:
   grundfoerderung: "0.30"
+  # Nur Selbstnutzer, nur beim Tausch einer funktionstuechtigen Heizung (S. 3):
+  # die Arten "ohne Altersgrenze" immer, die "mit Altersgrenze" erst, wenn die
+  # Inbetriebnahme bei Antragstellung mindestens klimabonus_mindestalter_jahre
+  # zurueckliegt.
   klimabonus: "0.16"
-  # Haushaltsjahreseinkommen bis einschliesslich X Euro -> Bonus; erster Treffer gewinnt.
+  klimabonus_heizarten_ohne_altersgrenze: [oel, kohle, gas_etage, nachtspeicher]
+  klimabonus_heizarten_mit_altersgrenze: [gas, biomasse]
+  klimabonus_mindestalter_jahre: 20
+  # Nur Selbstnutzer. Haushaltsjahreseinkommen bis einschliesslich X Euro -> Bonus;
+  # erster Treffer gewinnt (S. 3).
   einkommensbonus_stufen:
     - { bis_einkommen: 30000, bonus: "0.40" }
     - { bis_einkommen: 40000, bonus: "0.30" }
     - { bis_einkommen: 50000, bonus: "0.10" }
+  # Mindestens ein minderjaehriges, kindergeldberechtigtes Kind im Haushalt: alle
+  # Einkommensgrenzen (Bonusstufen UND 80-%-Grenze) steigen um diesen Betrag (S. 3/4).
+  familienzuschlag: "10000"
   max_quote_standard: "0.70"
   max_quote_selbstnutzer_niedriges_einkommen: "0.80"
-  max_quote_selbstnutzer_einkommensgrenze: 40000
+  max_quote_selbstnutzer_einkommensgrenze: 30000
   # Deckelt die foerderfaehigen KOSTEN, nicht den Foerderbetrag. Weitere
   # Wohneinheiten sind Phase 2.
   foerderfaehige_kosten_deckel_erste_wohneinheit: "28000"
+  mindestinvestitionsvolumen: "300"
+  # KfW 458 foerdert den Einbau von Waermeerzeugern (S. 2). Muss disjunkt zu
+  # beg_em.zulaessige_massnahmen bleiben - fuer dieselben Kosten nur ein Antrag,
+  # KfW ODER BAFA (S. 9).
+  zulaessige_massnahmen: [waermepumpe_luft, waermepumpe_erdwaerme]

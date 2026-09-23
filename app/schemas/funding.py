@@ -12,12 +12,16 @@ class Kfw458CalculateRequest(BaseModel):
     # Optional: verknuepft die Berechnung mit einer konkreten Massnahme -
     # Voraussetzung fuer die 60%-Kumulierungspruefung (siehe check_kumulierung()).
     measure_id: uuid.UUID | None = None
+    # Optional: massgebliches Datum fuer die Regelsatz-Auswahl (Systemarchitektur
+    # Abschnitt 6, Regel 1). Fehlt es, gilt das Anlagedatum des Falls.
+    stichtag: date | None = None
 
 
 class Kfw458CalculateResponse(BaseModel):
     foerderquote: Decimal
     foerderfaehige_kosten_gedeckelt: Decimal
     foerderbetrag: Decimal
+    stichtag: date
     regelversion: str
     regel_hash: str
 
@@ -29,6 +33,9 @@ class BegEmCalculateRequest(BaseModel):
     energieberatung_kosten: Decimal | None = Field(default=None, gt=0)
     ist_mfh: bool = False
     measure_id: uuid.UUID | None = None
+    # Optional: massgebliches Datum fuer die Regelsatz-Auswahl (Systemarchitektur
+    # Abschnitt 6, Regel 1). Fehlt es, gilt das Anlagedatum des Falls.
+    stichtag: date | None = None
 
 
 class BegEmCalculateResponse(BaseModel):
@@ -39,12 +46,15 @@ class BegEmCalculateResponse(BaseModel):
     fachplanung_foerderbetrag: Decimal | None
     energieberatung_foerderbetrag: Decimal | None
     foerderbetrag: Decimal
+    stichtag: date
     regelversion: str
     regel_hash: str
 
 
 class FundingRulesetOut(BaseModel):
+    programm: str
     regelversion: str
     gueltig_ab: date
+    gueltig_bis: date | None
     quelle: str
     regel_hash: str

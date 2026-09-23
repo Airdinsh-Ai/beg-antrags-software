@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import require_role
 from app.core.db import get_db
 from app.models.user import User, UserRole
-from app.modules.funding import rules_beg_em, rules_kfw458, service
+from app.modules.funding import ruleset, service
 from app.schemas.funding import (
     BegEmCalculateRequest,
     BegEmCalculateResponse,
@@ -33,6 +33,7 @@ def calculate_kfw458_endpoint(
         haushaltsjahreseinkommen=payload.haushaltsjahreseinkommen,
         ist_selbstnutzer=payload.ist_selbstnutzer,
         measure_id=payload.measure_id,
+        stichtag=payload.stichtag,
     )
     return Kfw458CalculateResponse(**result)
 
@@ -54,6 +55,7 @@ def calculate_beg_em_endpoint(
         energieberatung_kosten=payload.energieberatung_kosten,
         ist_mfh=payload.ist_mfh,
         measure_id=payload.measure_id,
+        stichtag=payload.stichtag,
     )
     return BegEmCalculateResponse(**result)
 
@@ -62,17 +64,17 @@ def calculate_beg_em_endpoint(
 def list_rulesets_endpoint(
     current_user: User = Depends(require_role(UserRole.BERATER, UserRole.ADMIN)),
 ) -> list[FundingRulesetOut]:
+    # Alle Regelsaetze inkl. abgeloester - alte Berechnungen bleiben so
+    # nachvollziehbar (Systemarchitektur Abschnitt 6, Regel 2).
     return [
         FundingRulesetOut(
-            regelversion=rules_kfw458.REGELVERSION,
-            gueltig_ab=rules_kfw458.GUELTIG_AB,
-            quelle=rules_kfw458.QUELLE,
-            regel_hash=rules_kfw458.REGEL_HASH,
-        ),
-        FundingRulesetOut(
-            regelversion=rules_beg_em.REGELVERSION,
-            gueltig_ab=rules_beg_em.GUELTIG_AB,
-            quelle=rules_beg_em.QUELLE,
-            regel_hash=rules_beg_em.REGEL_HASH,
-        ),
+            programm=satz.kopf.programm.value,
+            regelversion=satz.kopf.version,
+            gueltig_ab=satz.kopf.gueltig_ab,
+            gueltig_bis=satz.kopf.gueltig_bis,
+            quelle=satz.kopf.quelle,
+            regel_hash=satz.regel_hash,
+        )
+        for saetze in ruleset.aktuelles_regelwerk().values()
+        for satz in saetze
     ]

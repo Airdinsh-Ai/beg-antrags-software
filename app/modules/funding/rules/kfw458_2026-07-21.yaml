@@ -1,0 +1,29 @@
+# KfW-458-Regelsatz (Heizungsfoerderung), Stand ab 21.07.2026.
+# Quelle per WebFetch geprueft am 18.09.2026.
+#
+# Werte als Strings, damit sie verlustfrei als Decimal geladen werden (kein Float).
+# Regelsaetze nie ueberschreiben, nur abloesen: beim Nachfolger hier gueltig_bis
+# setzen (letzter gueltiger Tag) und eine neue Datei anlegen (Systemarchitektur 6).
+
+regelwerk:
+  programm: kfw_458
+  version: "kfw458-2026-07-21"
+  gueltig_ab: 2026-07-21
+  gueltig_bis: null
+  quelle: "https://www.kfw.de/inlandsfoerderung/Bundesfoerderung-fuer-effiziente-Gebaeude/Anpassungen-2026/"
+  geprueft_am: 2026-09-18
+
+regeln:
+  grundfoerderung: "0.30"
+  klimabonus: "0.16"
+  # Haushaltsjahreseinkommen bis einschliesslich X Euro -> Bonus; erster Treffer gewinnt.
+  einkommensbonus_stufen:
+    - { bis_einkommen: 30000, bonus: "0.40" }
+    - { bis_einkommen: 40000, bonus: "0.30" }
+    - { bis_einkommen: 50000, bonus: "0.10" }
+  max_quote_standard: "0.70"
+  max_quote_selbstnutzer_niedriges_einkommen: "0.80"
+  max_quote_selbstnutzer_einkommensgrenze: 40000
+  # Deckelt die foerderfaehigen KOSTEN, nicht den Foerderbetrag. Weitere
+  # Wohneinheiten sind Phase 2.
+  foerderfaehige_kosten_deckel_erste_wohneinheit: "28000"

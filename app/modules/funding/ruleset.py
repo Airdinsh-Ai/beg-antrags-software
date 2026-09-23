@@ -1,6 +1,6 @@
 """Regelwerk-Verwaltung der Foerdersatz-Engine (Systemarchitektur Abschnitt 6).
 
-Jeder Regelsatz ist eine YAML-Datei unter rules/ mit Gueltigkeitszeitraum als
+Jeder Regelsatz ist eine YAML-Datei unter app/rules/ mit Gueltigkeitszeitraum als
 Daten (gueltig_ab, gueltig_bis = letzter gueltiger Tag, null = aktuell gueltig).
 Umgesetzt sind die vier Regeln aus Abschnitt 6:
 
@@ -26,7 +26,8 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.models.funding import ProgrammTyp
 
-RULES_DIR = Path(__file__).parent / "rules"
+# app/rules/ - Regelsaetze liegen bewusst neben, nicht im Modulcode (Abschnitt 3).
+RULES_DIR = Path(__file__).parents[2] / "rules"
 
 
 class RegelwerkFehler(Exception):

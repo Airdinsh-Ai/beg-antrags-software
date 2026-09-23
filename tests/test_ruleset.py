@@ -32,7 +32,7 @@ def regelwechsel_dir(tmp_path) -> Path:
     mit abweichender Grundfoerderung, damit die Auswahl im Ergebnis sichtbar ist."""
     _schreibe(tmp_path / "beg_em.yaml", _echte_datei("beg_em_2026-07-21.yaml"))
 
-    neu = _echte_datei("kfw458_2026-07-21.yaml")
+    neu = _echte_datei("kfw_458_2026-07-21.yaml")
     _schreibe(tmp_path / "kfw458_neu.yaml", neu)
 
     alt = yaml.safe_load(yaml.safe_dump(neu))
@@ -155,7 +155,7 @@ def test_programm_ohne_regelsatz_wird_abgelehnt(regelwechsel_dir):
 
 def test_geaenderte_datei_ergibt_anderen_hash(tmp_path):
     pfad = tmp_path / "kfw.yaml"
-    daten = _echte_datei("kfw458_2026-07-21.yaml")
+    daten = _echte_datei("kfw_458_2026-07-21.yaml")
     _schreibe(pfad, daten)
     vorher = ruleset._lade_datei(pfad).regel_hash
 
@@ -165,7 +165,7 @@ def test_geaenderte_datei_ergibt_anderen_hash(tmp_path):
 
 
 def test_hash_unabhaengig_von_zeilenenden(tmp_path):
-    inhalt = (ruleset.RULES_DIR / "kfw458_2026-07-21.yaml").read_bytes().replace(b"\r\n", b"\n")
+    inhalt = (ruleset.RULES_DIR / "kfw_458_2026-07-21.yaml").read_bytes().replace(b"\r\n", b"\n")
     lf, crlf = tmp_path / "lf.yaml", tmp_path / "crlf.yaml"
     lf.write_bytes(inhalt)
     crlf.write_bytes(inhalt.replace(b"\n", b"\r\n"))

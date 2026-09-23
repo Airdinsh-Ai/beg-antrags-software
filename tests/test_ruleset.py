@@ -15,7 +15,7 @@ import yaml
 from app.models.funding import ProgrammTyp
 from app.modules.funding import ruleset
 from app.modules.funding.service import calculate_kfw458
-from tests.test_funding import _create_case
+from tests.test_funding import OEL, _create_case_with_measure
 
 
 def _echte_datei(name: str) -> dict:
@@ -74,7 +74,7 @@ def test_auswahl_nach_stichtag_nicht_nach_neuester_datei(regelwechsel_dir):
     erster_neuer_tag = ruleset.waehle_regelsatz(ProgrammTyp.KFW_458, date(2026, 7, 21), regelwerk)
 
     assert letzter_alter_tag.kopf.version == "kfw458-test-alt"
-    assert erster_neuer_tag.kopf.version == "kfw458-2026-07-21"
+    assert erster_neuer_tag.kopf.version == "kfw458-2026-07-21.2"
 
 
 def test_stichtag_vor_erstem_regelsatz_wirft_fehler(regelwechsel_dir):
@@ -88,7 +88,7 @@ def test_berechnung_nutzt_regelsatz_des_stichtags(regelwechsel_dir, monkeypatch)
     monkeypatch.setattr(ruleset, "aktuelles_regelwerk", lambda: regelwerk)
 
     kwargs = dict(
-        foerderfaehige_kosten=Decimal("10000"), haushaltsjahreseinkommen=100_000, ist_selbstnutzer=True
+        foerderfaehige_kosten=Decimal("10000"), haushaltsjahreseinkommen=100_000, ist_selbstnutzer=True, **OEL
     )
     alt = calculate_kfw458(**kwargs, stichtag=date(2026, 7, 20))
     neu = calculate_kfw458(**kwargs, stichtag=date(2026, 7, 21))
@@ -150,6 +150,24 @@ def test_programm_ohne_regelsatz_wird_abgelehnt(regelwechsel_dir):
         ruleset.lade_regelwerk(regelwechsel_dir)
 
 
+def test_unbekannter_massnahmentyp_in_regelsatz_wird_abgelehnt(regelwechsel_dir):
+    pfad = regelwechsel_dir / "kfw458_alt.yaml"
+    daten = yaml.safe_load(pfad.read_text(encoding="utf-8"))
+    daten["regeln"]["zulaessige_massnahmen"].append("waermepume_luft")  # vertippt
+    _schreibe(pfad, daten)
+    with pytest.raises(ruleset.RegelwerkFehler, match="kfw458_alt.yaml"):
+        ruleset.lade_regelwerk(regelwechsel_dir)
+
+
+def test_unbekannte_heizart_in_regelsatz_wird_abgelehnt(regelwechsel_dir):
+    pfad = regelwechsel_dir / "kfw458_alt.yaml"
+    daten = yaml.safe_load(pfad.read_text(encoding="utf-8"))
+    daten["regeln"]["klimabonus_heizarten_ohne_altersgrenze"].append("holz")
+    _schreibe(pfad, daten)
+    with pytest.raises(ruleset.RegelwerkFehler, match="kfw458_alt.yaml"):
+        ruleset.lade_regelwerk(regelwechsel_dir)
+
+
 # --- Regel-Hash ---------------------------------------------------------------
 
 
@@ -176,10 +194,15 @@ def test_hash_unabhaengig_von_zeilenenden(tmp_path):
 
 
 def test_api_stichtag_ohne_regelsatz_gibt_422(client, auth_headers):
-    case = _create_case(client, auth_headers)
+    case, measure_id = _create_case_with_measure(client, auth_headers)
     response = client.post(
         f"/cases/{case['id']}/funding/kfw-458",
-        json={"foerderfaehige_kosten": "10000", "haushaltsjahreseinkommen": 100000, "stichtag": "2026-07-15"},
+        json={
+            "foerderfaehige_kosten": "10000",
+            "ist_selbstnutzer": False,
+            "measure_id": measure_id,
+            "stichtag": "2026-07-15",
+        },
         headers=auth_headers,
     )
     assert response.status_code == 422
@@ -187,10 +210,10 @@ def test_api_stichtag_ohne_regelsatz_gibt_422(client, auth_headers):
 
 
 def test_api_ohne_stichtag_gilt_anlagedatum_des_falls(client, auth_headers):
-    case = _create_case(client, auth_headers)
+    case, measure_id = _create_case_with_measure(client, auth_headers, typ="daemmung")
     response = client.post(
         f"/cases/{case['id']}/funding/beg-em",
-        json={"foerderfaehige_kosten": "10000"},
+        json={"foerderfaehige_kosten": "10000", "measure_id": measure_id},
         headers=auth_headers,
     )
     assert response.status_code == 200
@@ -201,4 +224,4 @@ def test_rulesets_endpoint_zeigt_gueltigkeitszeitraum(client, auth_headers):
     body = client.get("/funding/rulesets", headers=auth_headers).json()
     kfw = next(r for r in body if r["programm"] == "kfw_458")
     assert kfw["gueltig_ab"] == "2026-07-21"
-    assert kfw["gueltig_bis"] is None
+    assert kfw["gueltig_bis"] == "2027-01-31"

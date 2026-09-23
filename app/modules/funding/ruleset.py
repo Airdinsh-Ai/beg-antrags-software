@@ -25,6 +25,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.models.funding import ProgrammTyp
+from app.models.measure import AltheizungArt, MeasureTyp
 
 # app/rules/ - Regelsaetze liegen bewusst neben, nicht im Modulcode (Abschnitt 3).
 RULES_DIR = Path(__file__).parents[2] / "rules"
@@ -63,11 +64,17 @@ class EinkommensbonusStufe(_Strikt):
 class Kfw458Regeln(_Strikt):
     grundfoerderung: Decimal
     klimabonus: Decimal
+    klimabonus_heizarten_ohne_altersgrenze: tuple[AltheizungArt, ...]
+    klimabonus_heizarten_mit_altersgrenze: tuple[AltheizungArt, ...]
+    klimabonus_mindestalter_jahre: int
     einkommensbonus_stufen: tuple[EinkommensbonusStufe, ...]
+    familienzuschlag: Decimal
     max_quote_standard: Decimal
     max_quote_selbstnutzer_niedriges_einkommen: Decimal
     max_quote_selbstnutzer_einkommensgrenze: int
     foerderfaehige_kosten_deckel_erste_wohneinheit: Decimal
+    mindestinvestitionsvolumen: Decimal
+    zulaessige_massnahmen: tuple[MeasureTyp, ...]
 
 
 class BegEmRegeln(_Strikt):
@@ -82,6 +89,7 @@ class BegEmRegeln(_Strikt):
     energieberatung_satz: Decimal
     energieberatung_deckel_efh_zfh: Decimal
     energieberatung_deckel_mfh: Decimal
+    zulaessige_massnahmen: tuple[MeasureTyp, ...]
 
 
 # Getrennte Modelle je Programm, keine gemeinsame Abstraktion (Abschnitt 2.7).

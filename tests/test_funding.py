@@ -1,138 +1,32 @@
 import uuid
+from datetime import date
 from decimal import Decimal
 
 from app.models.funding import FundingHistory
+from app.models.measure import AltheizungArt
 from app.modules.funding.service import calculate_beg_em, calculate_kfw458
 
+# Fester Stichtag fuer alle KfW-458-Tests: der Regelsatz kfw458-2026-07-21 gilt nur
+# bis 31.01.2027 (Degression, Merkblatt 07/2026). Ohne festen Stichtag wuerden die
+# Tests ab dem 01.02.2027 mit "kein gueltiger Regelsatz" scheitern.
+STICHTAG = date(2026, 9, 1)
+STICHTAG_JSON = "2026-09-01"
 
-def test_niedriges_einkommen_selbstnutzer_erreicht_maximalquote_80():
-    result = calculate_kfw458(
-        foerderfaehige_kosten=Decimal("10000"),
-        haushaltsjahreseinkommen=25_000,
-        ist_selbstnutzer=True,
-    )
-    # 30 + 16 + 40 = 86 %, gekappt bei 80 % (Selbstnutzer, Einkommen <= 40.000)
-    assert result["foerderquote"] == Decimal("0.80")
-    assert result["foerderbetrag"] == Decimal("8000.00")
+# Bonusberechtigte Altheizung (Klimageschwindigkeitsbonus): funktionstuechtige
+# Oelheizung, Alter egal. Wird in bestehenden Tests mitgegeben, damit deren
+# Testzweck (Quoten, Kappung, Deckel) unveraendert bleibt.
+OEL = dict(
+    alte_heizung_art=AltheizungArt.OEL,
+    alte_heizung_inbetriebnahme=date(2000, 1, 1),
+    alte_heizung_funktionstuechtig=True,
+)
+OEL_JSON = {
+    "alte_heizung_art": "oel",
+    "alte_heizung_inbetriebnahme": "2000-01-01",
+    "alte_heizung_funktionstuechtig": True,
+}
 
-
-def test_hohes_einkommen_kein_einkommensbonus_kappung_bei_70():
-    result = calculate_kfw458(
-        foerderfaehige_kosten=Decimal("10000"),
-        haushaltsjahreseinkommen=100_000,
-        ist_selbstnutzer=True,
-    )
-    # 30 + 16 + 0 = 46 %, unter beiden Obergrenzen -> keine Kappung noetig
-    assert result["foerderquote"] == Decimal("0.46")
-    assert result["foerderbetrag"] == Decimal("4600.00")
-
-
-def test_nicht_selbstnutzer_kappung_bei_70_trotz_niedrigem_einkommen():
-    result = calculate_kfw458(
-        foerderfaehige_kosten=Decimal("10000"),
-        haushaltsjahreseinkommen=25_000,
-        ist_selbstnutzer=False,
-    )
-    # 30 + 16 + 40 = 86 %, aber kein Selbstnutzer -> nur 70 %-Obergrenze gilt
-    assert result["foerderquote"] == Decimal("0.70")
-    assert result["foerderbetrag"] == Decimal("7000.00")
-
-
-def test_kosten_ueber_deckel_werden_bei_28000_gekappt():
-    result = calculate_kfw458(
-        foerderfaehige_kosten=Decimal("50000"),
-        haushaltsjahreseinkommen=100_000,
-        ist_selbstnutzer=True,
-    )
-    assert result["foerderfaehige_kosten_gedeckelt"] == Decimal("28000")
-    assert result["foerderbetrag"] == Decimal("12880.00")  # 28000 * 0.46
-
-
-def test_regelversion_und_hash_sind_gesetzt():
-    result = calculate_kfw458(
-        foerderfaehige_kosten=Decimal("1000"),
-        haushaltsjahreseinkommen=100_000,
-        ist_selbstnutzer=True,
-    )
-    assert result["regelversion"] == "kfw458-2026-07-21"
-    assert len(result["regel_hash"]) == 64  # sha256 hex
-
-
-def test_kfw458_endpoint_speichert_case_funding_eintrag(client, auth_headers):
-    prop = client.post(
-        "/property",
-        json={
-            "person": {"name": "Testperson", "kontakt": "test@example.com"},
-            "building": {"adresse": "Teststrasse 1"},
-            "ownership": {"von": "2020-01-01"},
-        },
-        headers=auth_headers,
-    ).json()
-    case = client.post(
-        "/cases",
-        json={"building_id": prop["building_id"], "ownership_id": prop["ownership_id"]},
-        headers=auth_headers,
-    ).json()
-
-    response = client.post(
-        f"/cases/{case['id']}/funding/kfw-458",
-        json={
-            "foerderfaehige_kosten": "10000",
-            "haushaltsjahreseinkommen": 25000,
-            "ist_selbstnutzer": True,
-        },
-        headers=auth_headers,
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["foerderquote"] == "0.80"
-    assert body["regelversion"] == "kfw458-2026-07-21"
-
-    updated_case = client.get(f"/cases/{case['id']}", headers=auth_headers).json()
-    assert len(updated_case["funding_entries"]) == 1
-    entry = updated_case["funding_entries"][0]
-    assert entry["programm"] == "kfw_458"
-    assert entry["regelversion"] == "kfw458-2026-07-21"
-    assert entry["regel_hash"] == body["regel_hash"]
-
-
-def test_kfw458_neuberechnung_ersetzt_statt_anzuhaengen(client, auth_headers):
-    prop = client.post(
-        "/property",
-        json={
-            "person": {"name": "Testperson", "kontakt": "test@example.com"},
-            "building": {"adresse": "Teststrasse 1"},
-            "ownership": {"von": "2020-01-01"},
-        },
-        headers=auth_headers,
-    ).json()
-    case = client.post(
-        "/cases",
-        json={"building_id": prop["building_id"], "ownership_id": prop["ownership_id"]},
-        headers=auth_headers,
-    ).json()
-
-    for kosten in ("10000", "20000"):
-        client.post(
-            f"/cases/{case['id']}/funding/kfw-458",
-            json={
-                "foerderfaehige_kosten": kosten,
-                "haushaltsjahreseinkommen": 25000,
-                "ist_selbstnutzer": True,
-            },
-            headers=auth_headers,
-        )
-
-    updated_case = client.get(f"/cases/{case['id']}", headers=auth_headers).json()
-    assert len(updated_case["funding_entries"]) == 1
-    assert updated_case["funding_entries"][0]["foerderbetrag"] == "16000.00"  # 20000 * 0.80
-
-
-def test_rulesets_endpoint_listet_kfw458(client, auth_headers):
-    response = client.get("/funding/rulesets", headers=auth_headers)
-    assert response.status_code == 200
-    body = response.json()
-    assert any(r["regelversion"] == "kfw458-2026-07-21" for r in body)
+WAERMEERZEUGER = ("waermepumpe_luft", "waermepumpe_erdwaerme")
 
 
 def _create_case(client, auth_headers) -> dict:
@@ -150,6 +44,145 @@ def _create_case(client, auth_headers) -> dict:
         json={"building_id": prop["building_id"], "ownership_id": prop["ownership_id"]},
         headers=auth_headers,
     ).json()
+
+
+def _create_measure(
+    client, auth_headers, case_id: str, typ: str = "waermepumpe_luft", altheizung: dict | None = OEL_JSON
+) -> str:
+    payload: dict = {"typ": typ}
+    if typ in WAERMEERZEUGER:
+        payload["jaz"] = "3.5"
+        if altheizung:
+            payload.update(altheizung)
+    response = client.post(f"/cases/{case_id}/measures", json=payload, headers=auth_headers)
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+def _create_case_with_measure(
+    client, auth_headers, typ: str = "waermepumpe_luft", altheizung: dict | None = OEL_JSON
+) -> tuple[dict, str]:
+    case = _create_case(client, auth_headers)
+    return case, _create_measure(client, auth_headers, case["id"], typ, altheizung)
+
+
+def _kfw(client, auth_headers, case_id: str, measure_id: str, **felder):
+    payload = {"measure_id": measure_id, "stichtag": STICHTAG_JSON, **felder}
+    return client.post(f"/cases/{case_id}/funding/kfw-458", json=payload, headers=auth_headers)
+
+
+def _beg_em(client, auth_headers, case_id: str, measure_id: str, **felder):
+    payload = {"measure_id": measure_id, "hat_isfp": False, **felder}
+    return client.post(f"/cases/{case_id}/funding/beg-em", json=payload, headers=auth_headers)
+
+
+# --- KfW 458: reine Berechnung ------------------------------------------------
+
+
+def test_niedriges_einkommen_selbstnutzer_erreicht_maximalquote_80():
+    result = calculate_kfw458(
+        foerderfaehige_kosten=Decimal("10000"),
+        haushaltsjahreseinkommen=25_000,
+        ist_selbstnutzer=True,
+        stichtag=STICHTAG,
+        **OEL,
+    )
+    assert result["foerderquote"] == Decimal("0.80")
+    assert result["foerderbetrag"] == Decimal("8000.00")
+
+
+def test_hohes_einkommen_nur_grundfoerderung_und_klimabonus():
+    result = calculate_kfw458(
+        foerderfaehige_kosten=Decimal("10000"),
+        haushaltsjahreseinkommen=100_000,
+        ist_selbstnutzer=True,
+        stichtag=STICHTAG,
+        **OEL,
+    )
+    assert result["foerderquote"] == Decimal("0.46")
+    assert result["foerderbetrag"] == Decimal("4600.00")
+
+
+def test_nicht_selbstnutzer_nur_grundfoerderung():
+    # Merkblatt 07/2026: Klima- und Einkommensbonus nur fuer Selbstnutzer.
+    result = calculate_kfw458(
+        foerderfaehige_kosten=Decimal("10000"),
+        haushaltsjahreseinkommen=25_000,
+        ist_selbstnutzer=False,
+        stichtag=STICHTAG,
+    )
+    assert result["foerderquote"] == Decimal("0.30")
+    assert result["foerderbetrag"] == Decimal("3000.00")
+
+
+def test_kosten_ueber_deckel_werden_bei_28000_gekappt():
+    result = calculate_kfw458(
+        foerderfaehige_kosten=Decimal("50000"),
+        haushaltsjahreseinkommen=100_000,
+        ist_selbstnutzer=True,
+        stichtag=STICHTAG,
+        **OEL,
+    )
+    assert result["foerderbetrag"] == Decimal("12880.00")  # 28000 * 0.46
+
+
+def test_regelversion_und_hash_sind_gesetzt():
+    result = calculate_kfw458(
+        foerderfaehige_kosten=Decimal("1000"),
+        haushaltsjahreseinkommen=100_000,
+        ist_selbstnutzer=True,
+        stichtag=STICHTAG,
+        **OEL,
+    )
+    assert result["regelversion"] == "kfw458-2026-07-21.2"
+    assert len(result["regel_hash"]) == 64  # sha256 hex
+
+
+# --- KfW 458: Endpunkt ----------------------------------------------------------
+
+
+def test_kfw458_endpoint_speichert_case_funding_eintrag(client, auth_headers):
+    case, measure_id = _create_case_with_measure(client, auth_headers)
+
+    response = _kfw(
+        client, auth_headers, case["id"], measure_id,
+        foerderfaehige_kosten="10000", haushaltsjahreseinkommen=25000, ist_selbstnutzer=True,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["foerderquote"] == "0.80"
+    assert body["regelversion"] == "kfw458-2026-07-21.2"
+
+    updated_case = client.get(f"/cases/{case['id']}", headers=auth_headers).json()
+    assert len(updated_case["funding_entries"]) == 1
+    entry = updated_case["funding_entries"][0]
+    assert entry["programm"] == "kfw_458"
+    assert entry["regelversion"] == "kfw458-2026-07-21.2"
+    assert entry["regel_hash"] == body["regel_hash"]
+
+
+def test_kfw458_neuberechnung_ersetzt_statt_anzuhaengen(client, auth_headers):
+    case, measure_id = _create_case_with_measure(client, auth_headers)
+
+    for kosten in ("10000", "20000"):
+        _kfw(
+            client, auth_headers, case["id"], measure_id,
+            foerderfaehige_kosten=kosten, haushaltsjahreseinkommen=25000, ist_selbstnutzer=True,
+        )
+
+    updated_case = client.get(f"/cases/{case['id']}", headers=auth_headers).json()
+    assert len(updated_case["funding_entries"]) == 1
+    assert updated_case["funding_entries"][0]["foerderbetrag"] == "16000.00"  # 20000 * 0.80
+
+
+def test_rulesets_endpoint_listet_kfw458(client, auth_headers):
+    response = client.get("/funding/rulesets", headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert any(r["regelversion"] == "kfw458-2026-07-21.2" for r in body)
+
+
+# --- BEG EM: reine Berechnung ---------------------------------------------------
 
 
 def test_beg_em_ohne_isfp_grundfoerderung_15_prozent():
@@ -221,14 +254,13 @@ def test_beg_em_gesamtfoerderbetrag_summiert_alle_positionen():
     assert result["foerderbetrag"] == Decimal("2500.00")
 
 
-def test_beg_em_endpoint_speichert_case_funding_eintrag(client, auth_headers):
-    case = _create_case(client, auth_headers)
+# --- BEG EM: Endpunkt / Fall mit mehreren Programmen ----------------------------
 
-    response = client.post(
-        f"/cases/{case['id']}/funding/beg-em",
-        json={"foerderfaehige_kosten": "10000", "hat_isfp": False},
-        headers=auth_headers,
-    )
+
+def test_beg_em_endpoint_speichert_case_funding_eintrag(client, auth_headers):
+    case, measure_id = _create_case_with_measure(client, auth_headers, typ="daemmung")
+
+    response = _beg_em(client, auth_headers, case["id"], measure_id, foerderfaehige_kosten="10000")
     assert response.status_code == 200
     body = response.json()
     assert body["foerderbetrag"] == "1500.00"
@@ -239,18 +271,18 @@ def test_beg_em_endpoint_speichert_case_funding_eintrag(client, auth_headers):
 
 
 def test_case_kann_kfw458_und_beg_em_gleichzeitig_haben(client, auth_headers):
-    case = _create_case(client, auth_headers)
+    # Erlaubter Fall "verschiedene Gewerke": Heizung ueber KfW, Daemmung ueber BAFA -
+    # zwei Massnahmen, nicht dieselben Kosten.
+    case, waermepumpe_id = _create_case_with_measure(client, auth_headers)
+    daemmung_id = _create_measure(client, auth_headers, case["id"], typ="daemmung")
 
-    client.post(
-        f"/cases/{case['id']}/funding/kfw-458",
-        json={"foerderfaehige_kosten": "10000", "haushaltsjahreseinkommen": 25000, "ist_selbstnutzer": True},
-        headers=auth_headers,
+    kfw = _kfw(
+        client, auth_headers, case["id"], waermepumpe_id,
+        foerderfaehige_kosten="10000", haushaltsjahreseinkommen=25000, ist_selbstnutzer=True,
     )
-    client.post(
-        f"/cases/{case['id']}/funding/beg-em",
-        json={"foerderfaehige_kosten": "10000", "hat_isfp": False},
-        headers=auth_headers,
-    )
+    beg_em = _beg_em(client, auth_headers, case["id"], daemmung_id, foerderfaehige_kosten="10000")
+    assert kfw.status_code == 200
+    assert beg_em.status_code == 200
 
     updated_case = client.get(f"/cases/{case['id']}", headers=auth_headers).json()
     programme = {entry["programm"] for entry in updated_case["funding_entries"]}
@@ -258,140 +290,40 @@ def test_case_kann_kfw458_und_beg_em_gleichzeitig_haben(client, auth_headers):
 
 
 def test_funding_history_wird_aus_aktueller_summe_neu_berechnet(client, auth_headers, db_session):
-    prop = client.post(
-        "/property",
-        json={
-            "person": {"name": "Testperson", "kontakt": "test@example.com"},
-            "building": {"adresse": "Teststrasse 1"},
-            "ownership": {"von": "2020-01-01"},
-        },
-        headers=auth_headers,
-    ).json()
-    case = client.post(
-        "/cases",
-        json={"building_id": prop["building_id"], "ownership_id": prop["ownership_id"]},
-        headers=auth_headers,
-    ).json()
+    case, measure_id = _create_case_with_measure(client, auth_headers)
+    building_id = uuid.UUID(case["building_id"])
 
-    client.post(
-        f"/cases/{case['id']}/funding/kfw-458",
-        json={"foerderfaehige_kosten": "10000", "haushaltsjahreseinkommen": 25000, "ist_selbstnutzer": True},
-        headers=auth_headers,
+    _kfw(
+        client, auth_headers, case["id"], measure_id,
+        foerderfaehige_kosten="10000", haushaltsjahreseinkommen=25000, ist_selbstnutzer=True,
     )
-    history = (
-        db_session.query(FundingHistory)
-        .filter(FundingHistory.building_id == uuid.UUID(prop["building_id"]))
-        .one()
-    )
+    history = db_session.query(FundingHistory).filter(FundingHistory.building_id == building_id).one()
     assert history.betrag == Decimal("8000.00")
 
     # Neuberechnung mit anderen Kosten ersetzt den Betrag, statt ihn aufzuaddieren
-    client.post(
-        f"/cases/{case['id']}/funding/kfw-458",
-        json={"foerderfaehige_kosten": "20000", "haushaltsjahreseinkommen": 25000, "ist_selbstnutzer": True},
-        headers=auth_headers,
+    _kfw(
+        client, auth_headers, case["id"], measure_id,
+        foerderfaehige_kosten="20000", haushaltsjahreseinkommen=25000, ist_selbstnutzer=True,
     )
     db_session.refresh(history)
     assert history.betrag == Decimal("16000.00")
 
 
-def _create_case_with_measure(client, auth_headers) -> tuple[dict, str]:
-    case = _create_case(client, auth_headers)
-    measure = client.post(
-        f"/cases/{case['id']}/measures",
-        json={"typ": "daemmung"},
-        headers=auth_headers,
-    ).json()
-    return case, measure["id"]
+# --- measure_id ist Pflicht (Typpruefung, ein Programm pro Massnahme) -----------
 
 
-def test_kumulierung_greift_nicht_bei_einzelprogramm(client, auth_headers):
-    case, measure_id = _create_case_with_measure(client, auth_headers)
-
-    # KfW 458 allein erreicht 80 % - deutlich ueber 60 %, aber ohne zweites
-    # Programm auf derselben Massnahme ist das kein Kumulierungsfall.
-    response = client.post(
-        f"/cases/{case['id']}/funding/kfw-458",
-        json={
-            "foerderfaehige_kosten": "10000",
-            "haushaltsjahreseinkommen": 25000,
-            "ist_selbstnutzer": True,
-            "measure_id": measure_id,
-        },
-        headers=auth_headers,
-    )
-    assert response.status_code == 200
-    assert response.json()["foerderbetrag"] == "8000.00"
-
-
-def test_kumulierung_zwei_programme_unter_60_prozent_ok(client, auth_headers):
-    case, measure_id = _create_case_with_measure(client, auth_headers)
-
-    beg_em_response = client.post(
-        f"/cases/{case['id']}/funding/beg-em",
-        json={"foerderfaehige_kosten": "100000", "hat_isfp": False, "measure_id": measure_id},
-        headers=auth_headers,
-    )
-    assert beg_em_response.status_code == 200
-    assert beg_em_response.json()["foerderbetrag"] == "4500.00"  # 30000 (Deckel) * 15 %
-
-    kfw_response = client.post(
-        f"/cases/{case['id']}/funding/kfw-458",
-        json={
-            "foerderfaehige_kosten": "100000",
-            "haushaltsjahreseinkommen": 100000,
-            "ist_selbstnutzer": True,
-            "measure_id": measure_id,
-        },
-        headers=auth_headers,
-    )
-    assert kfw_response.status_code == 200
-    assert kfw_response.json()["foerderbetrag"] == "12880.00"  # 28000 (Deckel) * 46 %
-    # Summe 17380 <= 60 % von 100000 (60000) -> ok
-
-
-def test_kumulierung_zwei_programme_ueber_60_prozent_wird_abgelehnt(client, auth_headers):
-    case, measure_id = _create_case_with_measure(client, auth_headers)
-
-    beg_em_response = client.post(
-        f"/cases/{case['id']}/funding/beg-em",
-        json={"foerderfaehige_kosten": "10000", "hat_isfp": False, "measure_id": measure_id},
-        headers=auth_headers,
-    )
-    assert beg_em_response.status_code == 200
-    assert beg_em_response.json()["foerderbetrag"] == "1500.00"
-
-    kfw_response = client.post(
-        f"/cases/{case['id']}/funding/kfw-458",
-        json={
-            "foerderfaehige_kosten": "10000",
-            "haushaltsjahreseinkommen": 25000,
-            "ist_selbstnutzer": True,
-            "measure_id": measure_id,
-        },
-        headers=auth_headers,
-    )
-    # 1500 + 8000 = 9500 > 60 % von 10000 (6000)
-    assert kfw_response.status_code == 409
-
-
-def test_kumulierung_ohne_measure_id_bleibt_unberuehrt(client, auth_headers):
+def test_ohne_measure_id_gibt_422(client, auth_headers):
     case = _create_case(client, auth_headers)
 
-    beg_em_response = client.post(
+    kfw = client.post(
+        f"/cases/{case['id']}/funding/kfw-458",
+        json={"foerderfaehige_kosten": "10000", "ist_selbstnutzer": False, "stichtag": STICHTAG_JSON},
+        headers=auth_headers,
+    )
+    beg_em = client.post(
         f"/cases/{case['id']}/funding/beg-em",
         json={"foerderfaehige_kosten": "10000", "hat_isfp": False},
         headers=auth_headers,
     )
-    kfw_response = client.post(
-        f"/cases/{case['id']}/funding/kfw-458",
-        json={
-            "foerderfaehige_kosten": "10000",
-            "haushaltsjahreseinkommen": 25000,
-            "ist_selbstnutzer": True,
-        },
-        headers=auth_headers,
-    )
-    # Ohne measure_id keine Kumulierungspruefung, obwohl die Summe > 60 % waere.
-    assert beg_em_response.status_code == 200
-    assert kfw_response.status_code == 200
+    assert kfw.status_code == 422
+    assert beg_em.status_code == 422

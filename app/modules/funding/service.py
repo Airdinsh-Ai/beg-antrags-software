@@ -9,61 +9,135 @@ from sqlalchemy.orm import Session
 from app.core.db import utcnow
 from app.models.case import Case
 from app.models.funding import CaseFunding, FundingHistory, ProgrammTyp
+from app.models.measure import AltheizungArt, Measure
 from app.models.user import User
 from app.modules.funding import ruleset
 from app.modules.property.service import get_case
 
-# Gesamtkonzept Modul 3: Obergrenze der Gesamtfoerderquote aus allen
-# oeffentlichen Quellen fuer dieselben Kosten. Greift nur zwischen mehreren
-# PROGRAMMEN auf derselben Massnahme - ein einzelnes Programm darf seinen
-# eigenen, hoeheren offiziellen Satz (z.B. KfW 458 bis 80 %) ausschoepfen,
-# das ist kein Kumulierungsfall.
-KUMULIERUNG_OBERGRENZE = Decimal("0.60")
+
+class FehlendeAngabeFehler(Exception):
+    """Eine fuer die Berechnung noetige Angabe fehlt - z.B. Einkommen oder
+    Altheizung bei Selbstnutzern (KfW-Merkblatt 458, 07/2026). Wird im Service
+    zu 422, analog zur fehlenden JAZ in Modul 2."""
 
 
-def _einkommensbonus(regeln: ruleset.Kfw458Regeln, haushaltsjahreseinkommen: int) -> Decimal:
+def _jahre_vor(stichtag: date, jahre: int) -> date:
+    """Derselbe Kalendertag `jahre` Jahre vor dem Stichtag - echte
+    Kalenderarithmetik statt Tage/365. Faellt der Stichtag auf den 29.02. und
+    das Zieljahr ist kein Schaltjahr, gilt der 28.02.: eine an diesem Tag
+    begonnene Jahresfrist ist am 29.02. des Stichtagsjahres bereits vollendet."""
+    try:
+        return stichtag.replace(year=stichtag.year - jahre)
+    except ValueError:
+        return stichtag.replace(year=stichtag.year - jahre, day=28)
+
+
+def _klimabonus_berechtigt(
+    regeln: ruleset.Kfw458Regeln,
+    art: AltheizungArt,
+    inbetriebnahme: date,
+    funktionstuechtig: bool,
+    stichtag: date,
+) -> bool:
+    """Klimageschwindigkeitsbonus-Voraussetzung an der Altheizung (Merkblatt
+    S. 3) - die Selbstnutzung prueft der Aufrufer. "Mindestens N Jahre
+    zurueckliegend" heisst: Inbetriebnahme spaetestens am N-ten Jahrestag vor dem
+    Stichtag. Beispiel: 29.02.2004 -> am 28.02.2024 nein, ab 29.02.2024 ja."""
+    if not funktionstuechtig:
+        return False
+    if art in regeln.klimabonus_heizarten_ohne_altersgrenze:
+        return True
+    if art in regeln.klimabonus_heizarten_mit_altersgrenze:
+        return inbetriebnahme <= _jahre_vor(stichtag, regeln.klimabonus_mindestalter_jahre)
+    return False
+
+
+def _einkommensbonus(regeln: ruleset.Kfw458Regeln, bemessungseinkommen: Decimal) -> Decimal:
     for stufe in regeln.einkommensbonus_stufen:
-        if haushaltsjahreseinkommen <= stufe.bis_einkommen:
+        if bemessungseinkommen <= stufe.bis_einkommen:
             return stufe.bonus
     return Decimal("0")
 
 
 def calculate_kfw458(
     foerderfaehige_kosten: Decimal,
-    haushaltsjahreseinkommen: int,
+    haushaltsjahreseinkommen: int | None,
     ist_selbstnutzer: bool,
+    kind_im_haushalt: bool = False,
+    alte_heizung_art: AltheizungArt | None = None,
+    alte_heizung_inbetriebnahme: date | None = None,
+    alte_heizung_funktionstuechtig: bool | None = None,
     stichtag: date | None = None,
 ) -> dict:
     """Reine Berechnung, kein DB-Zugriff - Regelsatz nach Stichtag gewaehlt
     (Systemarchitektur Abschnitt 6, Regel 1), ohne Stichtag gilt heute.
-    Wirft ruleset.KeinRegelsatzFehler, wenn am Stichtag keiner gilt.
+    Wirft ruleset.KeinRegelsatzFehler, wenn am Stichtag keiner gilt, und
+    FehlendeAngabeFehler, wenn einem Selbstnutzer Einkommen oder Altheizung fehlt.
 
-    Kappt zuerst die foerderfaehigen Kosten am Deckel fuer die erste Wohneinheit,
-    dann die Foerderquote an der jeweils geltenden Obergrenze (Modul 3).
+    Nach KfW-Merkblatt 458, Stand 07/2026: Klima- und Einkommensbonus nur fuer
+    Selbstnutzer; der Familienzuschlag senkt das Bemessungseinkommen und
+    verschiebt damit Bonusstufen UND 80-%-Grenze. Danach Quote kappen, Kosten am
+    Deckel der ersten Wohneinheit kappen, unter der Mindestinvestition 0 Euro.
+    Nicht-Selbstnutzer: Einkommen, Kind und Altheizung werden ignoriert.
     """
     stichtag = stichtag or utcnow().date()
     regelsatz = ruleset.waehle_regelsatz(ProgrammTyp.KFW_458, stichtag)
     regeln: ruleset.Kfw458Regeln = regelsatz.regeln
 
-    quote = regeln.grundfoerderung + regeln.klimabonus + _einkommensbonus(
-        regeln, haushaltsjahreseinkommen
-    )
-
+    einkommensbonus = Decimal("0")
+    klimabonus_angewendet = False
     max_quote = regeln.max_quote_standard
-    if (
-        ist_selbstnutzer
-        and haushaltsjahreseinkommen <= regeln.max_quote_selbstnutzer_einkommensgrenze
-    ):
-        max_quote = regeln.max_quote_selbstnutzer_niedriges_einkommen
+
+    if ist_selbstnutzer:
+        fehlend = [
+            name
+            for name, wert in (
+                ("haushaltsjahreseinkommen", haushaltsjahreseinkommen),
+                ("alte_heizung_art", alte_heizung_art),
+                ("alte_heizung_inbetriebnahme", alte_heizung_inbetriebnahme),
+                ("alte_heizung_funktionstuechtig", alte_heizung_funktionstuechtig),
+            )
+            if wert is None
+        ]
+        if fehlend:
+            raise FehlendeAngabeFehler(
+                "Fuer Selbstnutzer erforderlich (Klima-/Einkommensbonus, KfW-Merkblatt 458): "
+                + ", ".join(fehlend)
+                + ". Die alte_heizung_* werden an der Massnahme hinterlegt."
+            )
+
+        bemessungseinkommen = Decimal(haushaltsjahreseinkommen)
+        if kind_im_haushalt:
+            bemessungseinkommen -= regeln.familienzuschlag
+
+        einkommensbonus = _einkommensbonus(regeln, bemessungseinkommen)
+        klimabonus_angewendet = _klimabonus_berechtigt(
+            regeln,
+            alte_heizung_art,
+            alte_heizung_inbetriebnahme,
+            alte_heizung_funktionstuechtig,
+            stichtag,
+        )
+        if bemessungseinkommen <= regeln.max_quote_selbstnutzer_einkommensgrenze:
+            max_quote = regeln.max_quote_selbstnutzer_niedriges_einkommen
+
+    quote = regeln.grundfoerderung + einkommensbonus
+    if klimabonus_angewendet:
+        quote += regeln.klimabonus
     quote = min(quote, max_quote)
 
     kosten_gedeckelt = min(foerderfaehige_kosten, regeln.foerderfaehige_kosten_deckel_erste_wohneinheit)
-    foerderbetrag = (kosten_gedeckelt * quote).quantize(Decimal("0.01"))
+    foerderbetrag = Decimal("0.00")
+    if foerderfaehige_kosten >= regeln.mindestinvestitionsvolumen:
+        foerderbetrag = (kosten_gedeckelt * quote).quantize(Decimal("0.01"))
 
     return {
         "foerderquote": quote,
         "foerderfaehige_kosten_gedeckelt": kosten_gedeckelt,
         "foerderbetrag": foerderbetrag,
+        "klimabonus_angewendet": klimabonus_angewendet,
+        "einkommensbonus": einkommensbonus,
+        "max_quote": max_quote,
         "stichtag": stichtag,
         "regelversion": regelsatz.kopf.version,
         "regel_hash": regelsatz.regel_hash,
@@ -148,49 +222,31 @@ def calculate_beg_em(
     }
 
 
-def check_kumulierung(
-    db: Session,
-    measure_id: uuid.UUID | None,
-    programm: ProgrammTyp,
-    foerderfaehige_kosten: Decimal,
-    neuer_foerderbetrag: Decimal,
+def check_ein_programm_pro_massnahme(
+    db: Session, measure_id: uuid.UUID, programm: ProgrammTyp
 ) -> None:
-    """60%-Kumulierungsobergrenze (Gesamtkonzept Modul 3): Summe aus MEHREREN
-    Programmen fuer dieselbe Massnahme darf 60 % ihrer foerderfaehigen Kosten
-    nicht uebersteigen. Ein einzelnes Programm ohne zweites auf derselben
-    Massnahme ist davon ausgenommen - es darf seinen eigenen, ggf. hoeheren
-    offiziellen Satz ausschoepfen (z.B. KfW 458 bis 80 %); das ist keine
-    Kumulierung, sondern die normale Foerderquote dieses einen Programms.
+    """Fuer dieselben foerderfaehigen Kosten nur ein Antrag, KfW ODER BAFA
+    (KfW-Merkblatt 458, 07/2026, S. 9) - unabhaengig von der Hoehe. Solange die
+    zulaessigen Massnahmentypen beider Regelsaetze disjunkt sind, faengt schon die
+    Typpruefung das ab; dieser Schutz greift, falls sie sich kuenftig ueberschneiden.
+    Dasselbe Programm erneut zu berechnen ist kein Konflikt (Upsert).
 
-    Ohne measure_id keine Pruefung - das deckt den ausdruecklich erlaubten
-    Fall ab, dass unterschiedliche Gewerke (z.B. Daemmung ueber BAFA, Heizung
-    ueber KfW 458) getrennt gefoerdert werden, ohne dass hier ein Bezug
-    zwischen ihnen besteht.
+    Ersetzt die fruehere 60-%-Kumulierungspruefung: die 60 % gelten laut Merkblatt
+    nur fuer die Kombination mit ANDEREN oeffentlichen Mitteln (Kredite, Zulagen,
+    Landeszuschuesse), die Phase 0 nicht abbildet - BACKLOG B28.
     """
-    if measure_id is None:
-        return
-
-    andere_eintraege = (
+    anderes = (
         db.query(CaseFunding)
         .filter(CaseFunding.measure_id == measure_id, CaseFunding.programm != programm)
-        .all()
+        .first()
     )
-    if not andere_eintraege:
-        # Kein zweites Programm auf dieser Massnahme - keine Kumulierung im Spiel.
-        return
-
-    bisherige_summe = sum((eintrag.foerderbetrag for eintrag in andere_eintraege), Decimal("0"))
-    gesamt = bisherige_summe + neuer_foerderbetrag
-    obergrenze = (foerderfaehige_kosten * KUMULIERUNG_OBERGRENZE).quantize(Decimal("0.01"))
-
-    if gesamt > obergrenze:
+    if anderes is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                f"Kumulierungsobergrenze ueberschritten: {gesamt} Euro Gesamtfoerderung "
-                f"aus mehreren Programmen fuer diese Massnahme uebersteigen 60 % von "
-                f"{foerderfaehige_kosten} Euro foerderfaehigen Kosten ({obergrenze} Euro) "
-                "(Gesamtkonzept Modul 3)."
+                f"Fuer diese Massnahme ist bereits {anderes.programm.value} berechnet - fuer "
+                "dieselben foerderfaehigen Kosten ist nur ein Antrag zulaessig, KfW oder "
+                "BAFA (KfW-Merkblatt 458, S. 9)."
             ),
         )
 
@@ -270,11 +326,37 @@ def _stichtag_fuer(case: Case, stichtag: date | None) -> date:
 
 
 @contextmanager
-def _kein_regelsatz_als_422():
+def _berechnungsfehler_als_422():
     try:
         yield
-    except ruleset.KeinRegelsatzFehler as exc:
+    except (ruleset.KeinRegelsatzFehler, FehlendeAngabeFehler) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+
+
+def _get_measure_im_fall(db: Session, case: Case, measure_id: uuid.UUID) -> Measure:
+    measure = (
+        db.query(Measure).filter(Measure.id == measure_id, Measure.case_id == case.id).one_or_none()
+    )
+    if measure is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Massnahme nicht in diesem Fall gefunden."
+        )
+    return measure
+
+
+def _check_massnahmentyp(regelsatz: ruleset.Regelsatz, measure: Measure) -> None:
+    """Welche Massnahmentypen ein Programm foerdert, steht im Regelsatz
+    (zulaessige_massnahmen), nicht im Code."""
+    zulaessig = regelsatz.regeln.zulaessige_massnahmen
+    if measure.typ not in zulaessig:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"Massnahmentyp '{measure.typ.value}' ist fuer {regelsatz.kopf.programm.value} "
+                f"nicht zulaessig (Regelsatz {regelsatz.kopf.version}: "
+                f"{', '.join(t.value for t in zulaessig)})."
+            ),
+        )
 
 
 def calculate_case_kfw458(
@@ -282,20 +364,28 @@ def calculate_case_kfw458(
     case_id: uuid.UUID,
     current_user: User,
     foerderfaehige_kosten: Decimal,
-    haushaltsjahreseinkommen: int,
     ist_selbstnutzer: bool,
-    measure_id: uuid.UUID | None = None,
+    haushaltsjahreseinkommen: int | None,
+    kind_im_haushalt: bool,
+    measure_id: uuid.UUID,
     stichtag: date | None = None,
 ) -> dict:
     case = get_case(db, case_id, current_user)
-    with _kein_regelsatz_als_422():
+    measure = _get_measure_im_fall(db, case, measure_id)
+    stichtag = _stichtag_fuer(case, stichtag)
+    with _berechnungsfehler_als_422():
+        _check_massnahmentyp(ruleset.waehle_regelsatz(ProgrammTyp.KFW_458, stichtag), measure)
         result = calculate_kfw458(
             foerderfaehige_kosten,
             haushaltsjahreseinkommen,
             ist_selbstnutzer,
-            stichtag=_stichtag_fuer(case, stichtag),
+            kind_im_haushalt=kind_im_haushalt,
+            alte_heizung_art=measure.alte_heizung_art,
+            alte_heizung_inbetriebnahme=measure.alte_heizung_inbetriebnahme,
+            alte_heizung_funktionstuechtig=measure.alte_heizung_funktionstuechtig,
+            stichtag=stichtag,
         )
-    check_kumulierung(db, measure_id, ProgrammTyp.KFW_458, foerderfaehige_kosten, result["foerderbetrag"])
+    check_ein_programm_pro_massnahme(db, measure.id, ProgrammTyp.KFW_458)
     _upsert_case_funding(
         db,
         case,
@@ -303,7 +393,7 @@ def calculate_case_kfw458(
         result["foerderbetrag"],
         result["regelversion"],
         result["regel_hash"],
-        measure_id=measure_id,
+        measure_id=measure.id,
         foerderfaehige_kosten=foerderfaehige_kosten,
     )
     return result
@@ -318,20 +408,23 @@ def calculate_case_beg_em(
     fachplanung_kosten: Decimal | None,
     energieberatung_kosten: Decimal | None,
     ist_mfh: bool,
-    measure_id: uuid.UUID | None = None,
+    measure_id: uuid.UUID,
     stichtag: date | None = None,
 ) -> dict:
     case = get_case(db, case_id, current_user)
-    with _kein_regelsatz_als_422():
+    measure = _get_measure_im_fall(db, case, measure_id)
+    stichtag = _stichtag_fuer(case, stichtag)
+    with _berechnungsfehler_als_422():
+        _check_massnahmentyp(ruleset.waehle_regelsatz(ProgrammTyp.BEG_EM, stichtag), measure)
         result = calculate_beg_em(
             foerderfaehige_kosten,
             hat_isfp,
             fachplanung_kosten,
             energieberatung_kosten,
             ist_mfh,
-            stichtag=_stichtag_fuer(case, stichtag),
+            stichtag=stichtag,
         )
-    check_kumulierung(db, measure_id, ProgrammTyp.BEG_EM, foerderfaehige_kosten, result["foerderbetrag"])
+    check_ein_programm_pro_massnahme(db, measure.id, ProgrammTyp.BEG_EM)
     _upsert_case_funding(
         db,
         case,
@@ -339,7 +432,7 @@ def calculate_case_beg_em(
         result["foerderbetrag"],
         result["regelversion"],
         result["regel_hash"],
-        measure_id=measure_id,
+        measure_id=measure.id,
         foerderfaehige_kosten=foerderfaehige_kosten,
     )
     return result

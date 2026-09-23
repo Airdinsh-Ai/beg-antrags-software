@@ -26,5 +26,5 @@ def create_measure_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.BERATER, UserRole.ADMIN)),
 ) -> MeasureOut:
-    measure = service.create_measure(db, case_id, current_user, payload.typ, payload.jaz)
+    measure = service.create_measure(db, case_id, current_user, payload)
     return MeasureOut.model_validate(measure)

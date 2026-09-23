@@ -14,8 +14,8 @@ Datenextraktion & Textgenerierung (OpenAI, Ziel Claude) · Langfuse-Observabilit
 
 **Projektstand:** Phase 0: FastAPI-Backend mit Datenmodell (Systemarchitektur
 Abschnitt 7), Alembic-Migrationen, Auth + Rollen (Modul 10), CRUD für Objekt/Fall
-(Modul 1), Maßnahmenplanung (Modul 2), Fördersatz-Engine für KfW 458 + BEG EM
-inkl. 60%-Kumulierungsprüfung (Modul 3), LLM-Extraktion aus Energieausweisen
+(Modul 1), Maßnahmenplanung (Modul 2), Fördersatz-Engine für KfW 458 (nach
+KfW-Merkblatt 07/2026) + BEG EM mit Typprüfung und „ein Programm pro Maßnahme“ (Modul 3), LLM-Extraktion aus Energieausweisen
 (Modul 1) und Antragstext-Generator mit Pflicht-Review (Modul 4). Beide
 LLM-Aufrufe über OpenAI, instrumentiert mit Langfuse (Systemarchitektur
 Abschnitt 4/5). Umsetzung als Capstone-Projekt der Masterschool
@@ -49,9 +49,10 @@ AI-Engineering-Ausbildung.
 POST /auth/login                       {"email": "berater@example.com", "password": "demo-passwort-123"}
 POST /property                         {"person": {...}, "building": {...}, "ownership": {...}}
 POST /cases                            {"building_id": "...", "ownership_id": "..."}
-POST /cases/{id}/measures              {"typ": "waermepumpe_luft", "jaz": "3.5"}
-POST /cases/{id}/funding/kfw-458       {"foerderfaehige_kosten": "...", "haushaltsjahreseinkommen": ..., "ist_selbstnutzer": true, "measure_id": "..."}
-POST /cases/{id}/funding/beg-em        {"foerderfaehige_kosten": "...", "hat_isfp": false, "measure_id": "..."}
+POST /cases/{id}/measures              {"typ": "waermepumpe_luft", "jaz": "3.5", "alte_heizung_art": "oel", "alte_heizung_inbetriebnahme": "2001-05-01", "alte_heizung_funktionstuechtig": true}
+POST /cases/{id}/measures              {"typ": "daemmung"}
+POST /cases/{id}/funding/kfw-458       {"foerderfaehige_kosten": "...", "ist_selbstnutzer": true, "haushaltsjahreseinkommen": ..., "kind_im_haushalt": false, "measure_id": "<Waermepumpe>"}
+POST /cases/{id}/funding/beg-em        {"foerderfaehige_kosten": "...", "hat_isfp": false, "measure_id": "<Daemmung>"}
 POST /cases/{id}/documents             multipart: datei=<PDF>, typ=energieausweis, retention_class=...
 POST /cases/{id}/extract               (kein Body - liest das zuletzt hochgeladene Energieausweis-Dokument)
 POST /cases/{id}/texts/generate        {"measure_id": "..."}
@@ -68,6 +69,14 @@ GET  /measures/catalog
 deterministischer Code, brauchen keinen LLM-Zugang. Nur `extract` und `texts/generate`
 rufen OpenAI auf — dafür `OPENAI_API_KEY`/`LANGFUSE_*` in `.env` nötig. Interaktive Doku
 unter `/docs` (Swagger UI), sobald der Server läuft.
+
+**Förderberechnung (Stand Merkblatt KfW 458, 07/2026):** `measure_id` ist Pflicht.
+KfW 458 nur für Wärmeerzeuger, BEG EM nur für Dämmung/Fenster/Lüftung (Liste
+`zulaessige_massnahmen` im Regelsatz), sonst `422`. Für Selbstnutzer sind
+`haushaltsjahreseinkommen` und die `alte_heizung_*`-Angaben an der Maßnahme Pflicht
+(`422`), für Nicht-Selbstnutzer nicht. Der KfW-Regelsatz gilt bis 31.01.2027
+(Degression) — ab 01.02.2027 antwortet die Engine bewusst mit `422`, bis ein
+Nachfolger-Regelsatz angelegt ist.
 
 ## Tests
 

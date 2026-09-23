@@ -30,8 +30,9 @@ def calculate_kfw458_endpoint(
         case_id,
         current_user,
         foerderfaehige_kosten=payload.foerderfaehige_kosten,
-        haushaltsjahreseinkommen=payload.haushaltsjahreseinkommen,
         ist_selbstnutzer=payload.ist_selbstnutzer,
+        haushaltsjahreseinkommen=payload.haushaltsjahreseinkommen,
+        kind_im_haushalt=payload.kind_im_haushalt,
         measure_id=payload.measure_id,
         stichtag=payload.stichtag,
     )

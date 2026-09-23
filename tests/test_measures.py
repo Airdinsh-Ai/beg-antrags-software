@@ -71,3 +71,46 @@ def test_daemmung_wird_ohne_automatisierte_pruefung_gespeichert(client, auth_hea
     body = response.json()
     assert body["machbar"] is None
     assert "nicht automatisiert" in body["hinweis"]
+
+
+ALTHEIZUNG = {
+    "alte_heizung_art": "gas",
+    "alte_heizung_inbetriebnahme": "2004-02-29",
+    "alte_heizung_funktionstuechtig": True,
+}
+
+
+def test_waermepumpe_speichert_angaben_zur_altheizung(client, auth_headers):
+    case = _create_case(client, auth_headers)
+    response = client.post(
+        f"/cases/{case['id']}/measures",
+        json={"typ": "waermepumpe_luft", "jaz": "3.5", **ALTHEIZUNG},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["alte_heizung_art"] == "gas"
+    assert body["alte_heizung_inbetriebnahme"] == "2004-02-29"
+    assert body["alte_heizung_funktionstuechtig"] is True
+
+
+def test_altheizung_ist_bei_waermepumpe_optional(client, auth_headers):
+    # Pflicht erst bei der KfW-Berechnung fuer Selbstnutzer, nicht beim Anlegen.
+    case = _create_case(client, auth_headers)
+    response = client.post(
+        f"/cases/{case['id']}/measures",
+        json={"typ": "waermepumpe_luft", "jaz": "3.5"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 201
+    assert response.json()["alte_heizung_art"] is None
+
+
+def test_altheizung_bei_daemmung_gibt_422(client, auth_headers):
+    case = _create_case(client, auth_headers)
+    response = client.post(
+        f"/cases/{case['id']}/measures",
+        json={"typ": "daemmung", **ALTHEIZUNG},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422

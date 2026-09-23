@@ -84,6 +84,34 @@ Nachfolger-Regelsatz angelegt ist.
 uv run pytest
 ```
 
+## Golden Path mit echtem LLM (`scripts/golden_path.py`)
+
+End-to-End-Nachweis gegen einen **laufenden** Server, **ohne Mock**:
+login → property → case → document upload → extract → measure → kfw-458 →
+texts/generate → texts/review → export/pdf. Gibt je Schritt HTTP-Status und relevante
+Werte aus (extrahierte Gebäudedaten, Förderquote/-betrag, Textentwurf) und bricht beim
+ersten unerwarteten Status mit klarer Meldung und Exit-Code 1 ab.
+
+```
+docker compose up --build -d
+docker compose exec api uv run --no-sync python -m scripts.seed_demo_data
+uv run python -m scripts.erzeuge_test_energieausweis energieausweis_test.pdf
+uv run python -m scripts.golden_path --pdf energieausweis_test.pdf
+```
+
+Optionen: `--basis-url` (Standard `http://127.0.0.1:8000`), `--email`/`--passwort`
+(Standard: Demo-Nutzer), `--ausgabe` (Ziel des PDF-Exports), `--timeout`.
+
+- **Kein API-Schlüssel im Skript.** Es spricht nur mit der eigenen API; den OpenAI- und
+  Langfuse-Zugang hat ausschließlich der Server über `.env`. Die Schritte `extract` und
+  `texts/generate` lösen dort **echte, kostenpflichtige** LLM-Aufrufe aus.
+- Das Test-PDF ist **synthetisch** (fiktive Daten). Sollwerte der Extraktion: Baujahr
+  1978, 1 Wohneinheit, 182 kWh/(m²a), Klasse F.
+- Schritt 9 reicht den Entwurf unverändert als Endfassung ein. Das belegt nur den
+  technischen Ablauf, **keinen** inhaltlichen Review.
+- `tests/test_golden_path_script.py` prüft die Ablauflogik des Skripts mit **gemocktem**
+  LLM. Das ersetzt nicht den echten Lauf.
+
 ---
 
 ## License

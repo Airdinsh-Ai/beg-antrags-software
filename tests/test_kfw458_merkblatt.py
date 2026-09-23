@@ -70,7 +70,7 @@ def test_t2_selbstnutzer_35000_ohne_kind_kappung_70(client, auth_headers):
         foerderfaehige_kosten="28000", haushaltsjahreseinkommen=35000, ist_selbstnutzer=True,
     ))
     assert body["foerderquote"] == "0.70"  # 30 + 16 + 30 = 76 -> 70
-    assert body["foerderbetrag"] == "19600.00"
+    assert body["foerderbetrag"] == "19601.00"  # ABSICHTLICH FALSCH: CI-Rot-Nachweis, wird revertiert
     assert body["einkommensbonus"] == "0.30"
     assert body["max_quote"] == "0.70"
 
